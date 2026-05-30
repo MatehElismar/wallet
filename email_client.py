@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from email_parser import EmailMetadata
 import config
 
@@ -149,13 +149,192 @@ class MockEmailClient(EmailClient):
         logger.debug(f"Mock: Marked {email_id} as processed")
 
 
+class GmailAPIClient(EmailClient):
+    """Gmail API client using OAuth 2.0."""
+
+    def __init__(self, credentials_file: str = None, token_file: str = None):
+        self.credentials_file = credentials_file or config.GMAIL_CREDENTIALS_FILE
+        self.token_file = token_file or config.GMAIL_TOKEN_FILE
+        self.service = None
+        self._authenticate()
+
+    def _authenticate(self):
+        """Authenticate with Gmail API using OAuth 2.0."""
+        try:
+            from google.auth.transport.requests import Request
+            from google.oauth2.service_account import Credentials
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            from google.auth import default
+            import os
+            import pickle
+
+            SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+
+            creds = None
+            # If token.json exists, use it
+            if os.path.exists(self.token_file):
+                try:
+                    with open(self.token_file, "rb") as token:
+                        creds = pickle.load(token)
+                except Exception as e:
+                    logger.warning(f"Failed to load token: {e}")
+
+            # If creds expired or missing, refresh/reauth
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    logger.info("Refreshing Gmail auth token")
+                    creds.refresh(Request())
+                else:
+                    logger.info("Initiating Gmail OAuth flow (opens browser)")
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        self.credentials_file, SCOPES
+                    )
+                    creds = flow.run_local_server(port=0)
+
+                # Save token for future use
+                with open(self.token_file, "wb") as token:
+                    pickle.dump(creds, token)
+                logger.info(f"Gmail token saved to {self.token_file}")
+
+            # Build Gmail service
+            from googleapiclient.discovery import build
+            self.service = build("gmail", "v1", credentials=creds)
+            logger.info("Connected to Gmail API")
+
+        except FileNotFoundError:
+            logger.error(f"credentials.json not found at {self.credentials_file}")
+            logger.error("See GMAIL_SETUP.md for instructions on generating credentials")
+            raise
+        except Exception as e:
+            logger.error(f"Gmail authentication failed: {e}")
+            logger.error("See GMAIL_SETUP.md for troubleshooting")
+            raise
+
+    def fetch_new_emails(self) -> List[EmailMetadata]:
+        """Fetch unread emails from Gmail."""
+        if not self.service:
+            logger.error("Gmail service not initialized")
+            return []
+
+        emails = []
+        try:
+            # Search for unread emails
+            results = self.service.users().messages().list(
+                userId="me",
+                q="is:unread",
+                maxResults=10
+            ).execute()
+
+            messages = results.get("messages", [])
+            if not messages:
+                logger.info("No new unread emails in Gmail")
+                return emails
+
+            for message in messages:
+                try:
+                    msg_data = self.service.users().messages().get(
+                        userId="me",
+                        id=message["id"],
+                        format="full"
+                    ).execute()
+
+                    headers = msg_data["payload"]["headers"]
+                    subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(no subject)")
+                    sender = next((h["value"] for h in headers if h["name"] == "From"), "unknown")
+                    date_str = next((h["value"] for h in headers if h["name"] == "Date"), None)
+
+                    # Parse date
+                    from email.utils import parsedate_to_datetime
+                    try:
+                        received_date = parsedate_to_datetime(date_str) if date_str else datetime.utcnow()
+                    except:
+                        received_date = datetime.utcnow()
+
+                    # Get body
+                    body = self._get_email_body(msg_data)
+
+                    email_meta = EmailMetadata(
+                        email_id=f"gmail_{message['id']}",
+                        subject=subject,
+                        sender=sender,
+                        received_date=received_date,
+                        body=body,
+                    )
+                    emails.append(email_meta)
+
+                except Exception as e:
+                    logger.warning(f"Failed to parse Gmail message: {e}")
+
+            logger.info(f"Fetched {len(emails)} new emails from Gmail")
+            return emails
+
+        except Exception as e:
+            logger.error(f"Failed to fetch Gmail emails: {e}")
+            return emails
+
+    def _get_email_body(self, msg_data: Dict) -> str:
+        """Extract plain text body from Gmail message."""
+        from email_parser import EmailParser
+
+        try:
+            if "parts" in msg_data["payload"]:
+                for part in msg_data["payload"]["parts"]:
+                    if part["mimeType"] == "text/plain":
+                        data = part["body"].get("data", "")
+                        if data:
+                            import base64
+                            return base64.urlsafe_b64decode(data).decode("utf-8")
+                    elif part["mimeType"] == "text/html":
+                        data = part["body"].get("data", "")
+                        if data:
+                            import base64
+                            html = base64.urlsafe_b64decode(data).decode("utf-8")
+                            parser = EmailParser()
+                            return parser.extract_text_from_html(html)
+            else:
+                # Single part message
+                data = msg_data["payload"]["body"].get("data", "")
+                if data:
+                    import base64
+                    return base64.urlsafe_b64decode(data).decode("utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to extract email body: {e}")
+
+        return "(unable to extract email body)"
+
+    def mark_as_processed(self, email_id: str):
+        """Mark email as read in Gmail."""
+        if not self.service:
+            return
+
+        try:
+            msg_id = email_id.replace("gmail_", "")
+            self.service.users().messages().modify(
+                userId="me",
+                id=msg_id,
+                body={"removeLabelIds": ["UNREAD"]}
+            ).execute()
+            logger.debug(f"Marked Gmail email {email_id} as read")
+        except Exception as e:
+            logger.warning(f"Failed to mark Gmail email as read: {e}")
+
+
 def create_email_client() -> EmailClient:
     """Factory function to create the appropriate email client."""
     if config.EMAIL_PROVIDER == "gmail":
-        logger.info("Using Gmail API (not yet implemented, falling back to mock)")
-        return MockEmailClient()
+        logger.info("Using Gmail API")
+        try:
+            return GmailAPIClient()
+        except Exception as e:
+            logger.error(f"Failed to initialize Gmail API: {e}")
+            logger.warning("Falling back to mock emails")
+            return MockEmailClient()
     elif config.EMAIL_PROVIDER == "imap":
+        logger.info("Using IMAP email client")
         return IMAPEmailClient()
+    elif config.EMAIL_PROVIDER == "mock":
+        logger.info("Using mock email client (testing mode)")
+        return MockEmailClient()
     else:
-        logger.warning(f"Unknown email provider: {config.EMAIL_PROVIDER}, using mock")
+        logger.warning(f"Unknown email provider: {config.EMAIL_PROVIDER}, defaulting to mock")
         return MockEmailClient()

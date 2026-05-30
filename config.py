@@ -24,8 +24,8 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
 
-# Email
-EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "gmail").lower()
+# Email (gmail, imap, or mock for testing)
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "mock").lower()
 GMAIL_CREDENTIALS_FILE = os.getenv("GMAIL_CREDENTIALS_FILE", "credentials.json")
 GMAIL_TOKEN_FILE = os.getenv("GMAIL_TOKEN_FILE", "token.json")
 
