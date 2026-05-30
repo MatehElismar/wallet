@@ -12,7 +12,11 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def extract(self, email_content: str, accounts: List[Dict], categories: List[Dict]) -> Optional[Dict]:
-        """Extract transaction from email and return JSON."""
+        """Extract transaction from email and return JSON.
+
+        Returns:
+            Dict with 'output', 'system_prompt', and 'user_prompt' keys, or None on error.
+        """
         pass
 
     def build_system_prompt(self, accounts: List[Dict], categories: List[Dict]) -> str:
@@ -115,7 +119,11 @@ class AnthropicProvider(LLMProvider):
             response_text = message.content[0].text
             parsed = json.loads(response_text)
             logger.info(f"Anthropic extraction successful, skipReason={parsed.get('skipReason')}")
-            return parsed
+            return {
+                "output": parsed,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+            }
         except json.JSONDecodeError as e:
             logger.error(f"Anthropic returned invalid JSON: {e}")
             return None
@@ -164,7 +172,12 @@ class OpenAIProvider(LLMProvider):
             response_text = response.choices[0].message.content
             parsed = json.loads(response_text)
             logger.info(f"OpenAI extraction successful, skipReason={parsed.get('skipReason')}")
-            return parsed
+            # Return with full prompt context
+            return {
+                "output": parsed,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+            }
         except json.JSONDecodeError as e:
             logger.error(f"OpenAI returned invalid JSON: {e}")
             return None
@@ -210,7 +223,11 @@ class GeminiProvider(LLMProvider):
             response_text = response.text
             parsed = json.loads(response_text)
             logger.info(f"Gemini extraction successful, skipReason={parsed.get('skipReason')}")
-            return parsed
+            return {
+                "output": parsed,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+            }
         except json.JSONDecodeError as e:
             logger.error(f"Gemini returned invalid JSON: {e}")
             return None
@@ -268,7 +285,11 @@ class OllamaProvider(LLMProvider):
                 json_str = response_text[json_start:json_end]
                 parsed = json.loads(json_str)
                 logger.info(f"Ollama extraction successful, skipReason={parsed.get('skipReason')}")
-                return parsed
+                return {
+                    "output": parsed,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                }
             else:
                 logger.error("Ollama response doesn't contain valid JSON")
                 return None

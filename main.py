@@ -198,9 +198,9 @@ class EmailTxnPipeline:
 
             email_text = self.email_parser.prepare_for_llm(email_meta)
 
-            llm_output = self.llm_client.extract(email_text, accounts, categories)
+            llm_response = self.llm_client.extract(email_text, accounts, categories)
 
-            if not llm_output:
+            if not llm_response:
                 logger.warning(f"LLM extraction failed for {email_meta.email_id}")
                 self.state_store.update_status(
                     email_meta.email_id,
@@ -212,12 +212,18 @@ class EmailTxnPipeline:
                 self.state_store.increment_retry(email_meta.email_id)
                 continue
 
-            # Store LLM output with full audit trail
+            # Extract components from LLM response
             import json
+            llm_output = llm_response.get("output") if isinstance(llm_response, dict) else llm_response
+            system_prompt = llm_response.get("system_prompt", "") if isinstance(llm_response, dict) else ""
+            user_prompt = llm_response.get("user_prompt", "") if isinstance(llm_response, dict) else ""
+
+            # Store LLM output with full audit trail (complete prompts + output)
+            full_prompt = f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}" if system_prompt else user_prompt
             self.state_store.update_status(
                 email_meta.email_id,
                 ProcessingStatus.API_PENDING,
-                llm_prompt=email_text,
+                llm_prompt=full_prompt,
                 llm_output=json.dumps(llm_output),
                 llm_reasoning=json.dumps(llm_output),  # Full LLM response
                 decision_notes=f"LLM extracted: {llm_output.get('counterParty', '?')} - {llm_output.get('amount', '?')}",
