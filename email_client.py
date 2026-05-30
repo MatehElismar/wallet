@@ -62,36 +62,48 @@ class IMAPEmailClient(EmailClient):
                 logger.info("No new emails")
                 return emails
 
-            # Fetch headers and body
-            response = self.connection.fetch(msg_ids, ["ENVELOPE", "BODY[TEXT]", "BODY[HTML]"])
+            # Fetch raw messages (simpler approach)
+            response = self.connection.fetch(msg_ids, [b"RFC822"])
 
             for msg_id, data in response.items():
                 try:
-                    envelope = data[b"ENVELOPE"]
-                    subject = envelope.subject.decode() if isinstance(envelope.subject, bytes) else envelope.subject
-                    sender = envelope.from_[0]
-                    sender_name = sender.name.decode() if isinstance(sender.name, bytes) else sender.name
-                    sender_email = sender.mailbox.decode() + "@" + sender.host.decode()
-                    sender_str = f"{sender_name or ''} <{sender_email}>".strip()
+                    # Parse the raw RFC822 message
+                    import email as email_lib
+                    raw_message = data[b"RFC822"]
+                    msg = email_lib.message_from_bytes(raw_message)
 
-                    # Get received date
-                    received_date = envelope.date or datetime.utcnow()
+                    subject = msg.get("Subject", "(no subject)")
+                    sender = msg.get("From", "unknown")
+                    date_str = msg.get("Date")
 
-                    # Get body (prefer TEXT over HTML)
+                    # Parse date
+                    from email.utils import parsedate_to_datetime
+                    try:
+                        received_date = parsedate_to_datetime(date_str) if date_str else datetime.utcnow()
+                    except:
+                        received_date = datetime.utcnow()
+
+                    # Extract body (prefer text over HTML)
                     body = None
-                    if b"BODY[TEXT]" in data:
-                        body = data[b"BODY[TEXT]"].decode()
-                    elif b"BODY[HTML]" in data:
-                        from email_parser import EmailParser
-                        parser = EmailParser()
-                        html_body = data[b"BODY[HTML]"].decode()
-                        body = parser.extract_text_from_html(html_body)
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            content_type = part.get_content_type()
+                            if content_type == "text/plain":
+                                body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                                break
+                            elif content_type == "text/html" and not body:
+                                from email_parser import EmailParser
+                                parser = EmailParser()
+                                html_body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                                body = parser.extract_text_from_html(html_body)
+                    else:
+                        body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
 
                     if body:
                         email_meta = EmailMetadata(
                             email_id=f"imap_{msg_id}",
                             subject=subject,
-                            sender=sender_str,
+                            sender=sender,
                             received_date=received_date,
                             body=body,
                         )
