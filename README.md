@@ -31,7 +31,7 @@ Dead Letter Queue (JSONL) → Log failed items for manual review
   - **Anthropic** (Claude) — `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com)
   - **Google Gemini** — `GEMINI_API_KEY` from [aistudio.google.com](https://aistudio.google.com)
   - **Ollama** (local) — self-hosted at `http://localhost:11434`
-- **Gmail/IMAP Setup** (optional for Phase 1-2 testing)
+- **Email Setup** — IMAP works with ANY provider (Gmail, Outlook, Yahoo, ProtonMail, etc.)
 
 ### Setup
 
@@ -200,6 +200,46 @@ wallet/
 │   └── test_wallet_client.py
 └── README.md                # This file
 ```
+
+## Email Provider Configuration
+
+**No vendor lock-in.** IMAP works with ANY email provider.
+
+### Quick Setup (IMAP)
+
+IMAP is the universal standard — works with Gmail, Outlook, Yahoo, ProtonMail, Apple iCloud, Zoho, corporate email, self-hosted, etc.
+
+```bash
+# Pick your provider
+export EMAIL_PROVIDER=imap
+export IMAP_HOST=imap.gmail.com        # (or imap-mail.outlook.com, imap.mail.yahoo.com, etc)
+export IMAP_EMAIL=your_email@gmail.com
+export IMAP_PASSWORD=your_app_password # (app-specific password, not your regular password)
+```
+
+**Supported IMAP providers:**
+- Gmail: `imap.gmail.com`
+- Outlook: `imap-mail.outlook.com`
+- Yahoo: `imap.mail.yahoo.com`
+- ProtonMail: `imap.protonmail.com`
+- Apple iCloud: `imap.mail.me.com`
+- Zoho: `imap.zoho.com`
+- Any corporate/self-hosted email
+
+See **[EMAIL_PROVIDERS.md](EMAIL_PROVIDERS.md)** for detailed setup by provider.
+
+### Gmail API (Optional, Optimized)
+
+For Gmail users who want faster API access with OAuth:
+
+```bash
+export EMAIL_PROVIDER=gmail
+# Follow GMAIL_SETUP.md for OAuth setup
+```
+
+**Note:** Gmail API is faster but requires Google Cloud setup. IMAP works fine and is simpler.
+
+---
 
 ## LLM Provider Configuration
 
