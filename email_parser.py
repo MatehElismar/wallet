@@ -7,12 +7,15 @@ import html2text
 logger = logging.getLogger(__name__)
 
 class EmailMetadata:
-    def __init__(self, email_id: str, subject: str, sender: str, received_date: datetime, body: str):
+    def __init__(self, email_id: str, subject: str, sender: str, received_date: datetime, body: str,
+                 account_name: str = None, account_email: str = None):
         self.email_id = email_id
         self.subject = subject
         self.sender = sender
         self.received_date = received_date
         self.body = body
+        self.account_name = account_name
+        self.account_email = account_email
 
     def to_dict(self):
         return {
@@ -21,6 +24,8 @@ class EmailMetadata:
             "sender": self.sender,
             "received_date": self.received_date.isoformat(),
             "body": self.body,
+            "account_name": self.account_name,
+            "account_email": self.account_email,
         }
 
 class EmailParser:

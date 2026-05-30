@@ -1,0 +1,32 @@
+{
+  "accounts": [
+    {
+      "name": "Personal Gmail",
+      "provider": "imap",
+      "enabled": true,
+      "host": "imap.gmail.com",
+      "port": 993,
+      "email": "your_email@gmail.com",
+      "password": "${PERSONAL_EMAIL_PASSWORD}",
+      "category_prefix": "Personal"
+    },
+    {
+      "name": "Work Email",
+      "provider": "imap",
+      "enabled": false,
+      "host": "imap-mail.outlook.com",
+      "port": 993,
+      "email": "your_email@company.com",
+      "password": "${WORK_EMAIL_PASSWORD}",
+      "category_prefix": "Work"
+    },
+    {
+      "name": "Gmail API",
+      "provider": "gmail",
+      "enabled": false,
+      "credentials_file": "credentials.json",
+      "token_file": "token_gmail.json",
+      "category_prefix": "Gmail"
+    }
+  ]
+}
