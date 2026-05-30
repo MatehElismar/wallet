@@ -165,8 +165,11 @@ class MultiAccountEmailClient:
             except Exception as e:
                 logger.error(f"Failed to initialize {account.name}: {e}")
 
-    def fetch_all_emails(self) -> Dict[str, list]:
+    def fetch_all_emails(self, days_back: int = 0) -> Dict[str, list]:
         """Fetch emails from all accounts.
+
+        Args:
+            days_back: If 0, fetch unread only. If >0, fetch from last N days.
 
         Returns: {account_name: [EmailMetadata, ...], ...}
         """
@@ -179,7 +182,16 @@ class MultiAccountEmailClient:
 
             try:
                 client = self.clients[account.name]
-                emails = client.fetch_new_emails()
+                # Pass days_back if client supports it (IMAP)
+                if hasattr(client, 'fetch_new_emails'):
+                    import inspect
+                    sig = inspect.signature(client.fetch_new_emails)
+                    if 'days_back' in sig.parameters:
+                        emails = client.fetch_new_emails(days_back=days_back)
+                    else:
+                        emails = client.fetch_new_emails()
+                else:
+                    emails = client.fetch_new_emails()
 
                 # Add account info to each email for tracking
                 for email in emails:

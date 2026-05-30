@@ -47,16 +47,30 @@ class IMAPEmailClient(EmailClient):
             except:
                 pass
 
-    def fetch_new_emails(self) -> List[EmailMetadata]:
-        """Fetch unread emails from INBOX."""
+    def fetch_new_emails(self, days_back: int = 0) -> List[EmailMetadata]:
+        """Fetch emails from INBOX.
+
+        Args:
+            days_back: If 0, fetch only unread. If >0, fetch from last N days.
+        """
         emails = []
         try:
             if not self.connection:
                 self.connect()
 
-            # Select inbox and search for unread
+            # Select inbox and search for emails
             self.connection.select_folder("INBOX")
-            msg_ids = self.connection.search("UNSEEN")
+
+            if days_back > 0:
+                # Search for emails from the past N days
+                from datetime import datetime, timedelta
+                since_date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+                search_query = f"SINCE {since_date}"
+                logger.info(f"Searching for emails since {since_date}")
+                msg_ids = self.connection.search(search_query)
+            else:
+                # Search for unread emails only
+                msg_ids = self.connection.search("UNSEEN")
 
             if not msg_ids:
                 logger.info("No new emails")

@@ -36,7 +36,12 @@ class StateStore:
                     subject TEXT,
                     sender TEXT,
                     received_date TEXT,
+                    email_body TEXT,
+                    llm_prompt TEXT,
                     llm_output TEXT,
+                    llm_reasoning TEXT,
+                    validation_errors TEXT,
+                    decision_notes TEXT,
                     wallet_record_id TEXT,
                     error_message TEXT,
                     retry_count INTEGER DEFAULT 0,
@@ -60,28 +65,33 @@ class StateStore:
             """)
             conn.commit()
 
-    def record_email(self, email_id: str, subject: str, sender: str, received_date: str):
+    def record_email(self, email_id: str, subject: str, sender: str, received_date: str, email_body: str = None):
         """Record a new email with pending status."""
         now = datetime.utcnow().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO processed_emails
-                (email_id, status, subject, sender, received_date, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (email_id, ProcessingStatus.PENDING.value, subject, sender, received_date, now, now))
+                (email_id, status, subject, sender, received_date, email_body, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (email_id, ProcessingStatus.PENDING.value, subject, sender, received_date, email_body, now, now))
             conn.commit()
 
-    def update_status(self, email_id: str, status: ProcessingStatus, error_message: str = None, llm_output: str = None, wallet_record_id: str = None):
-        """Update the processing status of an email."""
+    def update_status(self, email_id: str, status: ProcessingStatus, error_message: str = None,
+                     llm_output: str = None, wallet_record_id: str = None, llm_prompt: str = None,
+                     llm_reasoning: str = None, validation_errors: str = None, decision_notes: str = None):
+        """Update the processing status of an email with full audit trail."""
         now = datetime.utcnow().isoformat()
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE processed_emails
-                SET status = ?, error_message = ?, llm_output = ?, wallet_record_id = ?, updated_at = ?
+                SET status = ?, error_message = ?, llm_output = ?, wallet_record_id = ?,
+                    llm_prompt = ?, llm_reasoning = ?, validation_errors = ?, decision_notes = ?,
+                    updated_at = ?
                 WHERE email_id = ?
-            """, (status.value, error_message, llm_output, wallet_record_id, now, email_id))
+            """, (status.value, error_message, llm_output, wallet_record_id, llm_prompt,
+                  llm_reasoning, validation_errors, decision_notes, now, email_id))
             conn.commit()
 
     def increment_retry(self, email_id: str):

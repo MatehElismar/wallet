@@ -28,9 +28,10 @@ logger = logging.getLogger(__name__)
 class EmailTxnPipeline:
     """Main orchestrator for email → Wallet record processing."""
 
-    def __init__(self, phase: int = 1, multi_account: bool = False):
+    def __init__(self, phase: int = 1, multi_account: bool = False, days_back: int = 0):
         self.phase = phase
         self.multi_account_mode = multi_account
+        self.days_back = days_back
         config.validate_config_for_phase(phase)
 
         if multi_account:
@@ -116,7 +117,7 @@ class EmailTxnPipeline:
     def _process_multi_account(self) -> int:
         """Process emails from multiple accounts."""
         try:
-            all_emails = self.multi_account_client.fetch_all_emails()
+            all_emails = self.multi_account_client.fetch_all_emails(days_back=self.days_back)
             total_emails = sum(len(emails) for emails in all_emails.values())
 
             if total_emails == 0:
@@ -139,7 +140,7 @@ class EmailTxnPipeline:
     def _process_single_account(self) -> int:
         """Process emails from single account."""
         try:
-            emails = self.email_client.fetch_new_emails()
+            emails = self.email_client.fetch_new_emails(days_back=self.days_back)
             if not emails:
                 logger.info("No new emails to process")
                 return 0
@@ -162,12 +163,13 @@ class EmailTxnPipeline:
                 logger.debug(f"Email {email_meta.email_id} already processed, skipping")
                 continue
 
-            # Record the email as pending
+            # Record the email as pending (with full body for audit trail)
             self.state_store.record_email(
                 email_meta.email_id,
                 email_meta.subject,
                 email_meta.sender,
                 email_meta.received_date.isoformat(),
+                email_body=email_meta.body,
             )
 
             # Quick heuristic: is this likely a transaction?
@@ -176,6 +178,7 @@ class EmailTxnPipeline:
                 self.state_store.update_status(
                     email_meta.email_id,
                     ProcessingStatus.LLM_SKIP,
+                    decision_notes="Heuristic filter: likely non-transaction (newsletter, promo, 2FA, etc)",
                 )
                 self.dead_letter.add(
                     email_meta.email_id,
@@ -203,18 +206,24 @@ class EmailTxnPipeline:
                     email_meta.email_id,
                     ProcessingStatus.LLM_ERROR,
                     error_message="Failed to parse LLM response",
+                    llm_prompt=email_text,
+                    decision_notes="LLM returned no output",
                 )
                 self.state_store.increment_retry(email_meta.email_id)
                 continue
 
-            # Store LLM output
+            # Store LLM output with full audit trail
+            import json
             self.state_store.update_status(
                 email_meta.email_id,
                 ProcessingStatus.API_PENDING,
-                llm_output=str(llm_output),
+                llm_prompt=email_text,
+                llm_output=json.dumps(llm_output),
+                llm_reasoning=json.dumps(llm_output),  # Full LLM response
+                decision_notes=f"LLM extracted: {llm_output.get('counterParty', '?')} - {llm_output.get('amount', '?')}",
             )
 
-            # Validate
+            # Validate with full audit trail
             is_valid, error = self.validator.validate_record(llm_output)
 
             if not is_valid:
@@ -223,6 +232,10 @@ class EmailTxnPipeline:
                     email_meta.email_id,
                     ProcessingStatus.VALIDATION_ERROR,
                     error_message=error,
+                    llm_prompt=email_text,
+                    llm_output=json.dumps(llm_output),
+                    validation_errors=error,
+                    decision_notes=f"Failed validation: {error}",
                 )
                 self.dead_letter.add(
                     email_meta.email_id,
@@ -336,6 +349,8 @@ def main():
                         help="Enable multi-account mode (read from email_accounts.json)")
     parser.add_argument("--show-accounts", action="store_true",
                         help="Show configured accounts and exit")
+    parser.add_argument("--days", type=int, default=0,
+                        help="Fetch emails from past N days (0=unread only, 7=this week)")
     args = parser.parse_args()
 
     if args.show_accounts:
@@ -346,9 +361,10 @@ def main():
         return
 
     mode = "Multi-Account" if args.multi_account else "Single-Account"
-    logger.info(f"Starting Wallet Email Sync Pipeline (Phase {args.phase}, {mode} Mode)")
+    days_desc = f", last {args.days} days" if args.days > 0 else ", unread only"
+    logger.info(f"Starting Wallet Email Sync Pipeline (Phase {args.phase}, {mode} Mode{days_desc})")
 
-    pipeline = EmailTxnPipeline(phase=args.phase, multi_account=args.multi_account)
+    pipeline = EmailTxnPipeline(phase=args.phase, multi_account=args.multi_account, days_back=args.days)
 
     if not pipeline.bootstrap():
         logger.error("Bootstrap failed")
