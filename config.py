@@ -29,6 +29,8 @@ EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "mock").lower()
 GMAIL_CREDENTIALS_FILE = os.getenv("GMAIL_CREDENTIALS_FILE", "credentials.json")
 GMAIL_TOKEN_FILE = os.getenv("GMAIL_TOKEN_FILE", "token.json")
 
+# Note: IMAP settings below are only for single-account IMAP mode
+# For multi-account setup, use email_accounts.json instead
 IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com")
 IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
 IMAP_EMAIL = os.getenv("IMAP_EMAIL", "")

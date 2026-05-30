@@ -258,40 +258,26 @@ Failed emails logged as JSONL for manual review + pattern analysis
 
 ## 📋 Configuration
 
-### .env File
+### .env File (Minimal Setup)
 
 Copy and edit:
 ```bash
 cp .env.example .env
 ```
 
-**LLM Setup:**
+**Only needs:**
 ```bash
-# Pick one provider
+# LLM (pick one)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
-# OR
-ANTHROPIC_API_KEY=sk-ant-...
-# OR
-GEMINI_API_KEY=AIzaSy...
-# OR (local)
-OLLAMA_BASE_URL=http://localhost:11434
-```
 
-**Email Setup (Single Account):**
-```bash
-EMAIL_PROVIDER=imap  # or gmail, mock
-IMAP_HOST=imap.gmail.com
-IMAP_EMAIL=your_email@gmail.com
-IMAP_PASSWORD=your_app_password
-```
-
-**Wallet Setup (Phase 3+):**
-```bash
+# Wallet (Phase 3+)
 WALLET_API_TOKEN=your_token_here
 ```
 
-See `.env.example` for all options.
+Email is configured in `email_accounts.json` (see below), not in `.env`.
+
+**Note:** Individual IMAP env vars (IMAP_HOST, IMAP_EMAIL, etc.) are optional and mainly for backwards compatibility. Use `email_accounts.json` instead.
 
 ### email_accounts.json (Multi-Account)
 
