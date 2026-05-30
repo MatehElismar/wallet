@@ -170,7 +170,7 @@ class StateStore:
         """Check if an email has already been processed."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT status FROM processed_emails WHERE email_id = ?", (email_id,))
+            cursor.execute("SELECT request_status FROM processed_emails WHERE email_id = ?", (email_id,))
             result = cursor.fetchone()
         return result is not None
 
