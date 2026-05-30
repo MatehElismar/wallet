@@ -1,0 +1,21 @@
+# Environment
+.env
+.env.local
+*.pyc
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+wallet.db
+token.json
+dead_letter.jsonl
+logs/
+*.log
