@@ -240,7 +240,7 @@ class EmailTxnPipeline:
                     error_message=error,
                     llm_prompt=email_text,
                     llm_output=json.dumps(llm_output),
-                    validation_errors=error,
+                    validation_result=error,
                     decision_notes=f"Failed validation: {error}",
                 )
                 self.dead_letter.add(

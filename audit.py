@@ -66,8 +66,8 @@ def view_email_audit(email_id=None):
         print(f"\n  LLM Reasoning:\n{format_json(row['llm_reasoning'])}")
 
         print(f"\n✅ VALIDATION")
-        if row['validation_errors']:
-            print(f"  ❌ Errors: {row['validation_errors']}")
+        if row['validation_result']:
+            print(f"  ❌ Result: {row['validation_result']}")
         else:
             print(f"  ✓ Passed validation")
 

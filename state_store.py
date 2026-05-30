@@ -58,7 +58,7 @@ class StateStore:
                     llm_prompt TEXT,
                     llm_output TEXT,
                     llm_reasoning TEXT,
-                    validation_errors TEXT,
+                    validation_result TEXT,
                     decision_notes TEXT,
                     wallet_record_id TEXT,
                     error_message TEXT,
@@ -99,13 +99,14 @@ class StateStore:
     def update_status(self, email_id: str, status: ProcessingStatus = None,
                      request_status: RequestStatus = None, classification_status: ClassificationStatus = None,
                      error_message: str = None, llm_output: str = None, wallet_record_id: str = None,
-                     llm_prompt: str = None, llm_reasoning: str = None, validation_errors: str = None,
+                     llm_prompt: str = None, llm_reasoning: str = None, validation_result: str = None,
                      decision_notes: str = None):
         """Update email status with separate request and classification tracking.
 
         Args:
             request_status: System processing status (pending, processing, completed, failed)
             classification_status: Decision about the email (not_transaction, classified, invalid, etc)
+            validation_result: Result of validation (if validation ran and returned a negative result)
             status: (deprecated) Old single status field - converted to request/classification
         """
         now = datetime.utcnow().isoformat()
@@ -146,13 +147,13 @@ class StateStore:
                 UPDATE processed_emails
                 SET request_status = ?, classification_status = ?, error_message = ?,
                     llm_output = ?, wallet_record_id = ?, llm_prompt = ?,
-                    llm_reasoning = ?, validation_errors = ?, decision_notes = ?,
+                    llm_reasoning = ?, validation_result = ?, decision_notes = ?,
                     updated_at = ?
                 WHERE email_id = ?
             """, (request_status.value if request_status else None,
                   classification_status.value if classification_status else None,
                   error_message, llm_output, wallet_record_id, llm_prompt,
-                  llm_reasoning, validation_errors, decision_notes, now, email_id))
+                  llm_reasoning, validation_result, decision_notes, now, email_id))
             conn.commit()
 
     def increment_retry(self, email_id: str):
