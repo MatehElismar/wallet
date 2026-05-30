@@ -45,7 +45,8 @@ def view_email_audit(email_id=None):
         print(f"  Subject: {row['subject']}")
         print(f"  From: {row['sender']}")
         print(f"  Received: {row['received_date']}")
-        print(f"  Status: {row['status']}")
+        print(f"  Request Status: {row['request_status']} (system processing)")
+        print(f"  Classification: {row['classification_status']} (decision made)")
         print(f"  Retries: {row['retry_count']}")
 
         print(f"\n📧 EMAIL BODY")
@@ -98,25 +99,45 @@ def main():
         cursor.execute("""
             SELECT status, COUNT(*) as count FROM processed_emails GROUP BY status
         """)
-        print("Summary by Status:")
+        print("Request Status (System Processing):")
+        cursor.execute("""
+            SELECT request_status, COUNT(*) as count FROM processed_emails GROUP BY request_status
+        """)
+        for status, count in cursor.fetchall():
+            print(f"  {status}: {count}")
+
+        print("\nClassification Status (Decision):")
+        cursor.execute("""
+            SELECT classification_status, COUNT(*) as count FROM processed_emails GROUP BY classification_status
+        """)
         for status, count in cursor.fetchall():
             print(f"  {status}: {count}")
 
         # Recent emails
         print("\n\nRecent Emails:")
         cursor.execute("""
-            SELECT email_id, status, subject, decision_notes
+            SELECT email_id, request_status, classification_status, subject, decision_notes
             FROM processed_emails
             ORDER BY created_at DESC
             LIMIT 10
         """)
 
-        for email_id, status, subject, notes in cursor.fetchall():
-            status_emoji = "✓" if status == "api_success" else "✗" if "error" in status else "⚠"
-            print(f"\n  {status_emoji} {email_id} [{status}]")
+        for email_id, req_status, class_status, subject, notes in cursor.fetchall():
+            # Emoji based on classification
+            if class_status == "not_transaction":
+                emoji = "📋"  # Filtered
+            elif class_status == "invalid":
+                emoji = "❌"  # Invalid
+            elif class_status == "posted_to_wallet":
+                emoji = "✅"  # Success
+            else:
+                emoji = "⚠️"  # Other
+
+            print(f"\n  {emoji} {email_id}")
             print(f"     Subject: {subject[:60]}")
+            print(f"     Request: {req_status} | Classification: {class_status}")
             if notes:
-                print(f"     Decision: {notes[:80]}")
+                print(f"     Notes: {notes[:80]}")
 
         print("\n\nUsage: python audit.py <email_id> (to view full details)")
 
