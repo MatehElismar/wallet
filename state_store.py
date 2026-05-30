@@ -81,6 +81,22 @@ class StateStore:
                     cached_at TEXT NOT NULL
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS llm_interactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    system_prompt TEXT,
+                    user_prompt TEXT,
+                    raw_response TEXT,
+                    parsed_output TEXT,
+                    parsing_error TEXT,
+                    success BOOLEAN DEFAULT 0,
+                    timestamp TEXT NOT NULL,
+                    FOREIGN KEY (email_id) REFERENCES processed_emails(email_id)
+                )
+            """)
             conn.commit()
 
     def record_email(self, email_id: str, subject: str, sender: str, received_date: str, email_body: str = None):
@@ -271,6 +287,49 @@ class StateStore:
             cursor = conn.cursor()
             cursor.execute("SELECT category_name, category_id FROM category_cache")
             return {row[0]: row[1] for row in cursor.fetchall()}
+
+    def record_llm_interaction(self, email_id: str, provider: str, model: str,
+                              system_prompt: str, user_prompt: str,
+                              raw_response: str, parsed_output: str = None,
+                              parsing_error: str = None, success: bool = False):
+        """Record an LLM request/response for analysis."""
+        now = datetime.utcnow().isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO llm_interactions
+                (email_id, provider, model, system_prompt, user_prompt,
+                 raw_response, parsed_output, parsing_error, success, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (email_id, provider, model, system_prompt, user_prompt,
+                  raw_response, parsed_output, parsing_error, success, now))
+            conn.commit()
+
+    def get_llm_interactions(self, email_id: str = None, provider: str = None,
+                            success: bool = None, limit: int = 50) -> List[Dict]:
+        """Get LLM interactions, optionally filtered."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            query = "SELECT * FROM llm_interactions WHERE 1=1"
+            params = []
+
+            if email_id:
+                query += " AND email_id = ?"
+                params.append(email_id)
+            if provider:
+                query += " AND provider = ?"
+                params.append(provider)
+            if success is not None:
+                query += " AND success = ?"
+                params.append(1 if success else 0)
+
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
 
     def stats(self) -> Dict:
         """Get overall pipeline stats (request and classification)."""

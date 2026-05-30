@@ -205,18 +205,48 @@ class EmailTxnPipeline:
                 self.state_store.update_status(
                     email_meta.email_id,
                     ProcessingStatus.LLM_ERROR,
-                    error_message="Failed to parse LLM response",
+                    error_message="API/network error (no response)",
                     llm_prompt=email_text,
-                    decision_notes="LLM returned no output",
+                    decision_notes="LLM API call failed",
                 )
                 self.state_store.increment_retry(email_meta.email_id)
                 continue
 
             # Extract components from LLM response
             import json
-            llm_output = llm_response.get("output") if isinstance(llm_response, dict) else llm_response
-            system_prompt = llm_response.get("system_prompt", "") if isinstance(llm_response, dict) else ""
-            user_prompt = llm_response.get("user_prompt", "") if isinstance(llm_response, dict) else ""
+            import config as cfg
+            llm_output = llm_response.get("output")
+            system_prompt = llm_response.get("system_prompt", "")
+            user_prompt = llm_response.get("user_prompt", "")
+            raw_response = llm_response.get("raw_response", "")
+            parsing_error = llm_response.get("parsing_error")
+            success = llm_response.get("success", False)
+
+            # Record interaction for analysis (even if it failed)
+            self.state_store.record_llm_interaction(
+                email_id=email_meta.email_id,
+                provider=cfg.LLM_PROVIDER,
+                model=getattr(self.llm_client, 'model', 'unknown'),
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                raw_response=raw_response,
+                parsed_output=json.dumps(llm_output) if llm_output else None,
+                parsing_error=parsing_error,
+                success=success,
+            )
+
+            # If JSON parsing failed, record error and skip
+            if not success or parsing_error:
+                logger.warning(f"LLM parsing error for {email_meta.email_id}: {parsing_error}")
+                self.state_store.update_status(
+                    email_meta.email_id,
+                    ProcessingStatus.LLM_ERROR,
+                    error_message=parsing_error or "Unknown parsing error",
+                    llm_prompt=f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}",
+                    decision_notes=f"LLM JSON parsing failed: {parsing_error}",
+                )
+                self.state_store.increment_retry(email_meta.email_id)
+                continue
 
             # Store LLM output with full audit trail (complete prompts + output)
             full_prompt = f"SYSTEM:\n{system_prompt}\n\nUSER:\n{user_prompt}" if system_prompt else user_prompt

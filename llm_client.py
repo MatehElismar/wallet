@@ -15,7 +15,14 @@ class LLMProvider(ABC):
         """Extract transaction from email and return JSON.
 
         Returns:
-            Dict with 'output', 'system_prompt', and 'user_prompt' keys, or None on error.
+            Dict with keys:
+            - output: Parsed JSON extraction (or None if parsing failed)
+            - system_prompt: Instructions sent to LLM
+            - user_prompt: Email content sent to LLM
+            - raw_response: Raw text response from LLM (for debugging)
+            - parsing_error: Error message if JSON parsing failed
+            - success: Whether extraction succeeded (parsed JSON without error)
+            Returns None only on network/API errors.
         """
         pass
 
@@ -117,16 +124,28 @@ class AnthropicProvider(LLMProvider):
                 messages=[{"role": "user", "content": user_prompt}]
             )
             response_text = message.content[0].text
-            parsed = json.loads(response_text)
-            logger.info(f"Anthropic extraction successful, skipReason={parsed.get('skipReason')}")
-            return {
-                "output": parsed,
-                "system_prompt": system_prompt,
-                "user_prompt": user_prompt,
-            }
-        except json.JSONDecodeError as e:
-            logger.error(f"Anthropic returned invalid JSON: {e}")
-            return None
+
+            try:
+                parsed = json.loads(response_text)
+                logger.info(f"Anthropic extraction successful, skipReason={parsed.get('skipReason')}")
+                return {
+                    "output": parsed,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "raw_response": response_text,
+                    "parsing_error": None,
+                    "success": True,
+                }
+            except json.JSONDecodeError as e:
+                logger.error(f"Anthropic returned invalid JSON: {e}\nResponse: {response_text}")
+                return {
+                    "output": None,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "raw_response": response_text,
+                    "parsing_error": str(e),
+                    "success": False,
+                }
         except Exception as e:
             logger.error(f"Anthropic extraction failed: {e}")
             return None
@@ -170,17 +189,28 @@ class OpenAIProvider(LLMProvider):
                 ]
             )
             response_text = response.choices[0].message.content
-            parsed = json.loads(response_text)
-            logger.info(f"OpenAI extraction successful, skipReason={parsed.get('skipReason')}")
-            # Return with full prompt context
-            return {
-                "output": parsed,
-                "system_prompt": system_prompt,
-                "user_prompt": user_prompt,
-            }
-        except json.JSONDecodeError as e:
-            logger.error(f"OpenAI returned invalid JSON: {e}")
-            return None
+
+            try:
+                parsed = json.loads(response_text)
+                logger.info(f"OpenAI extraction successful, skipReason={parsed.get('skipReason')}")
+                return {
+                    "output": parsed,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "raw_response": response_text,
+                    "parsing_error": None,
+                    "success": True,
+                }
+            except json.JSONDecodeError as e:
+                logger.error(f"OpenAI returned invalid JSON: {e}\nResponse: {response_text}")
+                return {
+                    "output": None,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "raw_response": response_text,
+                    "parsing_error": str(e),
+                    "success": False,
+                }
         except Exception as e:
             logger.error(f"OpenAI extraction failed: {e}")
             return None
@@ -221,16 +251,28 @@ class GeminiProvider(LLMProvider):
                 generation_config={"max_output_tokens": 1024}
             )
             response_text = response.text
-            parsed = json.loads(response_text)
-            logger.info(f"Gemini extraction successful, skipReason={parsed.get('skipReason')}")
-            return {
-                "output": parsed,
-                "system_prompt": system_prompt,
-                "user_prompt": user_prompt,
-            }
-        except json.JSONDecodeError as e:
-            logger.error(f"Gemini returned invalid JSON: {e}")
-            return None
+
+            try:
+                parsed = json.loads(response_text)
+                logger.info(f"Gemini extraction successful, skipReason={parsed.get('skipReason')}")
+                return {
+                    "output": parsed,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "raw_response": response_text,
+                    "parsing_error": None,
+                    "success": True,
+                }
+            except json.JSONDecodeError as e:
+                logger.error(f"Gemini returned invalid JSON: {e}\nResponse: {response_text}")
+                return {
+                    "output": None,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "raw_response": response_text,
+                    "parsing_error": str(e),
+                    "success": False,
+                }
         except Exception as e:
             logger.error(f"Gemini extraction failed: {e}")
             return None
@@ -283,16 +325,37 @@ class OllamaProvider(LLMProvider):
             json_end = response_text.rfind("}") + 1
             if json_start != -1 and json_end > json_start:
                 json_str = response_text[json_start:json_end]
-                parsed = json.loads(json_str)
-                logger.info(f"Ollama extraction successful, skipReason={parsed.get('skipReason')}")
-                return {
-                    "output": parsed,
-                    "system_prompt": system_prompt,
-                    "user_prompt": user_prompt,
-                }
+                try:
+                    parsed = json.loads(json_str)
+                    logger.info(f"Ollama extraction successful, skipReason={parsed.get('skipReason')}")
+                    return {
+                        "output": parsed,
+                        "system_prompt": system_prompt,
+                        "user_prompt": user_prompt,
+                        "raw_response": response_text,
+                        "parsing_error": None,
+                        "success": True,
+                    }
+                except json.JSONDecodeError as e:
+                    logger.error(f"Ollama returned invalid JSON: {e}\nResponse: {response_text}")
+                    return {
+                        "output": None,
+                        "system_prompt": system_prompt,
+                        "user_prompt": user_prompt,
+                        "raw_response": response_text,
+                        "parsing_error": str(e),
+                        "success": False,
+                    }
             else:
                 logger.error("Ollama response doesn't contain valid JSON")
-                return None
+                return {
+                    "output": None,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "raw_response": response_text,
+                    "parsing_error": "No JSON found in response",
+                    "success": False,
+                }
         except json.JSONDecodeError as e:
             logger.error(f"Ollama returned invalid JSON: {e}")
             return None
