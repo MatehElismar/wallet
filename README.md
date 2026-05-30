@@ -205,6 +205,24 @@ wallet/
 
 **No vendor lock-in.** IMAP works with ANY email provider.
 
+### Multi-Account Support
+
+Monitor **multiple emails** (personal + work, multiple providers, family accounts) with one system:
+
+```bash
+# Enable multi-account mode
+python main.py --phase 2 --multi-account
+
+# View configured accounts
+python main.py --show-accounts
+```
+
+See **[MULTI_ACCOUNT.md](MULTI_ACCOUNT.md)** for detailed setup.
+
+Example: Monitor Gmail + Outlook + ProtonMail simultaneously, all feeding one Wallet.
+
+---
+
 ### Quick Setup (IMAP)
 
 IMAP is the universal standard — works with Gmail, Outlook, Yahoo, ProtonMail, Apple iCloud, Zoho, corporate email, self-hosted, etc.
