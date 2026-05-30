@@ -501,6 +501,72 @@ python main.py --phase 2
 
 ---
 
+## 🔍 Debugging LLM Errors
+
+When you have LLM processing errors, use these tools to identify what's going wrong:
+
+### LLM Interaction Analysis
+
+Every LLM request/response is logged to the `llm_interactions` table. Analyze patterns:
+
+```bash
+# Summary of all LLM errors by provider/model
+python llm_analysis.py
+
+# View detailed interaction (shows raw response + parsing error)
+python llm_analysis.py <id>
+```
+
+**Example output:**
+```
+📊 LLM INTERACTIONS SUMMARY
+Total interactions: 145
+Successful: 142 (97.9%)
+Failed: 3 (2.1%)
+
+🔧 BY PROVIDER
+openai: 145 total, 142 success (97.9%)
+
+❌ PARSING ERRORS
+1x: Expecting value: line 1 column 1 (char 0)
+1x: Extra data: line 2 column 2 (char 25)
+
+🔍 RECENT FAILURES (last 5)
+  Email: gmail_15@gmail.com
+  Provider: openai
+  Error: Expecting value: line 1 column 1 (char 0)
+  Response: "I found a transaction: amount=45.99..."
+```
+
+### Common LLM Issues
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| **JSON parsing errors** | LLM returned markdown/explanation before JSON | Add strict system prompt; switch to "structured output" mode if provider supports |
+| **Hallucinated fields** | LLM invented data not in email | Add validation; reject if amount/date doesn't match email |
+| **Categorization wrong** | LLM doesn't recognize your categories | Show category list in system prompt; add examples |
+| **Structured output fails** | Provider doesn't support feature reliably | Switch to JSON-in-text mode; validate parse errors |
+| **Rate limiting** | Too many API calls | Add delays; batch emails; check rate limits |
+
+### Audit Trail
+
+For individual emails, view the complete processing history:
+
+```bash
+# View full audit trail for an email (prompts, reasoning, decision)
+python audit.py <email_id>
+```
+
+Shows:
+- Request status (processing pipeline state)
+- Classification status (decision made)
+- Complete LLM prompts sent
+- LLM output and reasoning
+- Validation results
+- Dead-letter reason (if failed)
+
+---
+
 ## 📞 Support & Troubleshooting
 
 ### Common Issues
