@@ -1,15 +1,17 @@
 # Wallet Email-to-Record Automation System
 
-An automated pipeline that reads incoming emails (bank alerts, receipts, invoices, payment confirmations) and writes structured financial records into **Wallet** by BudgetBakers via their REST API, powered by Claude LLM for intelligent categorization.
+Automatically read incoming emails (bank alerts, receipts, invoices, payment confirmations) and write structured financial records into **Wallet** by BudgetBakers via their REST API, powered by Claude/GPT/Gemini/Ollama LLM for intelligent categorization.
 
-## Architecture
+**No vendor lock-in.** Works with any email provider (Gmail, Outlook, Yahoo, ProtonMail, etc.) and any LLM (OpenAI, Anthropic, Google Gemini, Ollama).
+
+## 🏗️ Architecture
 
 ```
-Email Client (IMAP/Gmail) 
+Email Clients (Gmail API, IMAP) ← Any provider
   ↓
-Email Parser (HTML → Text)
+Email Parser (HTML → Text extraction)
   ↓
-LLM Orchestrator (Claude API) → Extracts: amount, date, category, account, etc.
+LLM Orchestrator (Claude, GPT-4, Gemini, Llama) → Extract transaction details
   ↓
 Validator (Field validation, account/category resolution)
   ↓
@@ -20,395 +22,599 @@ State Store (SQLite) → Track processed emails, cache IDs
 Dead Letter Queue (JSONL) → Log failed items for manual review
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
-### Prerequisites
+### 1. Prerequisites
 
 - **Python 3.11+** with conda
-- **Wallet API Token** (requires Premium plan) — get from [web.budgetbakers.com/settings/apiTokens](https://web.budgetbakers.com/settings/apiTokens)
-- **One of these LLM providers:**
-  - **OpenAI** (GPT-4o, etc) — `OPENAI_API_KEY` from [platform.openai.com](https://platform.openai.com)
-  - **Anthropic** (Claude) — `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com)
-  - **Google Gemini** — `GEMINI_API_KEY` from [aistudio.google.com](https://aistudio.google.com)
-  - **Ollama** (local) — self-hosted at `http://localhost:11434`
-- **Email Setup** — IMAP works with ANY provider (Gmail, Outlook, Yahoo, ProtonMail, etc.)
+- **Wallet API Token** (Premium plan) — [get here](https://web.budgetbakers.com/settings/apiTokens) (for Phase 3+)
+- **One LLM provider** (choose one):
+  - **OpenAI** (GPT-4o) — [get API key](https://platform.openai.com/api-keys)
+  - **Anthropic** (Claude) — [get API key](https://console.anthropic.com/api-keys)
+  - **Google Gemini** — [get API key](https://aistudio.google.com/apikey) (free tier available)
+  - **Ollama** (local, free) — [install](https://ollama.ai)
 
-### Setup
+### 2. Setup (5 minutes)
 
-1. **Clone/navigate to the project**
-   ```bash
-   cd /Users/mateh/projects/wallet
-   ```
+```bash
+# Clone/navigate to project
+cd /Users/mateh/projects/wallet
 
-2. **Create conda environment**
-   ```bash
-   conda create -n wallet python=3.11
-   conda activate wallet
-   pip install -r requirements.txt
-   ```
+# Create conda environment
+conda create -n wallet python=3.11
+conda activate wallet
+pip install -r requirements.txt
 
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials:
-   ```
+# Configure
+cp .env.example .env
+# Edit .env with your LLM API key (optional for Phase 1)
+```
 
-   **Choose your LLM provider:**
+### 3. Run Phase 1 (No API Keys Needed)
 
-   **Option A: OpenAI (Default)**
-   ```bash
-   LLM_PROVIDER=openai
-   OPENAI_API_KEY=sk-...
-   ```
-
-   **Option B: Anthropic (Claude)**
-   ```bash
-   LLM_PROVIDER=anthropic
-   ANTHROPIC_API_KEY=sk-ant-...
-   ```
-
-   **Option C: Google Gemini**
-   ```bash
-   LLM_PROVIDER=gemini
-   GEMINI_API_KEY=AIzaSy...
-   ```
-
-   **Option D: Ollama (Local, Self-Hosted)**
-   ```bash
-   LLM_PROVIDER=ollama
-   OLLAMA_BASE_URL=http://localhost:11434
-   OLLAMA_MODEL=llama2  # or mistral, neural-chat, etc
-   ```
-
-   **Always set (for Phase 3+):**
-   ```bash
-   WALLET_API_TOKEN=your_token_here
-   EMAIL_PROVIDER=imap or gmail
-   ```
-
-4. **Run Phase 1 (Local Testing)**
-   ```bash
-   python main.py --phase 1
-   ```
-
-## Implementation Phases
-
-### **Phase 1 — Local Skeleton** ✅ Complete
-- [x] Project structure with virtual environment
-- [x] Email fetcher (IMAP support, mock for Gmail)
-- [x] HTML-to-text parser
-- [x] LLM prompt template with mock responses
-- [x] Mock Wallet API client (logs without posting)
-- [x] SQLite state store for tracking
-- [x] Main orchestrator
-- [x] Unit tests for email parser and validator
-
-**Status:** Pipeline runs end-to-end; mock records logged to console.
-
-**Test it:**
 ```bash
 python main.py --phase 1
 ```
 
+Output:
+```
+✓ Fetched 2 mock emails
+✓ Processed through LLM (mock responses)
+✓ Validated records
+✓ Would post 2 records to Wallet API
+```
+
 ---
 
-### **Phase 2 — LLM Calibration** (Next)
-**What's needed:**
-- [ ] Pick an LLM provider and set its API key
-- [ ] Run 20-30 real emails through the LLM
-- [ ] Tune prompt heuristics based on misclassifications
-- [ ] Validate all 8 post-LLM validation steps
+## 📖 Documentation Guide
 
-**Commands (pick one):**
+### For Different Use Cases
 
-**OpenAI:**
+| I want to... | Read this |
+|---|---|
+| **Pick an LLM (GPT, Claude, Gemini, Ollama)** | [PROVIDERS.md](PROVIDERS.md) |
+| **Use Gmail API (OAuth)** | [GMAIL_SETUP.md](GMAIL_SETUP.md) |
+| **Use any email provider (IMAP)** | [EMAIL_PROVIDERS.md](EMAIL_PROVIDERS.md) |
+| **Monitor multiple emails** | [MULTI_ACCOUNT.md](MULTI_ACCOUNT.md) |
+| **Full API reference** | [Wallet API docs](https://rest.budgetbakers.com/wallet/reference) |
+
+---
+
+## 🧠 Choose Your LLM Provider
+
+### OpenAI (Recommended for Cost/Speed)
+
 ```bash
 export LLM_PROVIDER=openai
 export OPENAI_API_KEY=sk-...
 python main.py --phase 2
 ```
 
-**Anthropic:**
+**Cost:** ~$0.50/month for 100 emails  
+**Speed:** Fast (1-2s per email)  
+**Quality:** Excellent
+
+[Full setup → PROVIDERS.md](PROVIDERS.md)
+
+### Anthropic (Best Accuracy)
+
 ```bash
 export LLM_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 python main.py --phase 2
 ```
 
-**Gemini:**
+**Cost:** ~$0.75/month for 100 emails  
+**Speed:** Medium (2-5s per email)  
+**Quality:** Excellent (best accuracy)
+
+[Full setup → PROVIDERS.md](PROVIDERS.md)
+
+### Google Gemini (Fast + Free Tier)
+
 ```bash
 export LLM_PROVIDER=gemini
 export GEMINI_API_KEY=AIzaSy...
 python main.py --phase 2
 ```
 
-**Ollama (local):**
+**Cost:** Free tier (1.5M tokens/day) or pay-as-you-go  
+**Speed:** Very fast (1s per email)  
+**Quality:** Good
+
+[Full setup → PROVIDERS.md](PROVIDERS.md)
+
+### Ollama (Local, Private, Free)
+
 ```bash
+# First: ollama pull mistral
 export LLM_PROVIDER=ollama
 export OLLAMA_BASE_URL=http://localhost:11434
-export OLLAMA_MODEL=llama2
+export OLLAMA_MODEL=mistral
 python main.py --phase 2
 ```
 
----
+**Cost:** Free (electricity only)  
+**Speed:** Slow on CPU, fast on GPU  
+**Quality:** Good-excellent (depends on model)  
+**Privacy:** Complete (no API calls)
 
-### **Phase 3 — Wallet API Integration**
-**What's needed:**
-- [ ] Obtain Wallet API token (Premium plan)
-- [ ] Bootstrap: GET /accounts and GET /categories
-- [ ] Update LLM system prompt with real account/category names
-- [ ] Run dry-run mode (validate without posting)
-- [ ] Post small batch (3-5 records) and verify in Wallet app
-- [ ] Implement 207 partial-success handling and retry logic
-
-**Commands:**
-```bash
-export WALLET_API_TOKEN=your_token_here
-python main.py --phase 3
-```
+[Full setup → PROVIDERS.md](PROVIDERS.md)
 
 ---
 
-### **Phase 4 — Production Hardening**
-**What's needed:**
-- [ ] Set up cron job or systemd timer
-- [ ] Implement alerting for dead-letter queue
-- [ ] Add X-Last-Data-Change-Rev monitoring
-- [ ] Monitor record count approaching 20,000 limit
-- [ ] Document account/category mapping
+## 📧 Choose Your Email Provider
 
----
+### IMAP (Works with ANY Provider)
 
-## File Structure
-
-```
-wallet/
-├── main.py                  # Entry point; orchestrates pipeline
-├── config.py                # Loads env vars; phase validation
-├── email_client.py          # IMAP/Gmail email fetcher
-├── email_parser.py          # HTML→text; metadata extraction
-├── llm_client.py            # Claude API wrapper
-├── validator.py             # Post-LLM field validation
-├── wallet_client.py         # Wallet REST API client
-├── state_store.py           # SQLite tracking (emails, ID cache)
-├── dead_letter.py           # JSONL for failed records
-├── .env.example             # Environment variable template
-├── requirements.txt         # Python dependencies
-├── tests/
-│   ├── test_email_parser.py
-│   ├── test_validator.py
-│   └── test_wallet_client.py
-└── README.md                # This file
-```
-
-## Email Provider Configuration
-
-**No vendor lock-in.** IMAP works with ANY email provider.
-
-### Multi-Account Support
-
-Monitor **multiple emails** (personal + work, multiple providers, family accounts) with one system:
+**Supports:** Gmail, Outlook, Yahoo, ProtonMail, Apple iCloud, Zoho, corporate email, self-hosted
 
 ```bash
-# Enable multi-account mode
+export EMAIL_PROVIDER=imap
+export IMAP_HOST=imap.gmail.com        # (or any provider)
+export IMAP_EMAIL=your_email@gmail.com
+export IMAP_PASSWORD=your_app_password
+python main.py --phase 2
+```
+
+[Provider-specific setup → EMAIL_PROVIDERS.md](EMAIL_PROVIDERS.md)
+
+### Gmail API (Gmail only, OAuth)
+
+**Faster and more structured than IMAP**
+
+```bash
+export EMAIL_PROVIDER=gmail
+# Follow GMAIL_SETUP.md for OAuth setup
+python main.py --phase 2
+```
+
+[Step-by-step guide → GMAIL_SETUP.md](GMAIL_SETUP.md)
+
+### Multiple Email Accounts
+
+Monitor personal + work emails, or multiple providers, simultaneously:
+
+```bash
+# Configure email_accounts.json
 python main.py --phase 2 --multi-account
 
 # View configured accounts
 python main.py --show-accounts
 ```
 
-See **[MULTI_ACCOUNT.md](MULTI_ACCOUNT.md)** for detailed setup.
-
-Example: Monitor Gmail + Outlook + ProtonMail simultaneously, all feeding one Wallet.
+[Complete setup → MULTI_ACCOUNT.md](MULTI_ACCOUNT.md)
 
 ---
 
-### Quick Setup (IMAP)
+## 🔄 Implementation Phases
 
-IMAP is the universal standard — works with Gmail, Outlook, Yahoo, ProtonMail, Apple iCloud, Zoho, corporate email, self-hosted, etc.
+### **Phase 1 — Local Skeleton** ✅
+- No API keys needed
+- Mock emails, mock LLM responses
+- Validates all logic offline
+- **Test:** `python main.py --phase 1`
 
-```bash
-# Pick your provider
-export EMAIL_PROVIDER=imap
-export IMAP_HOST=imap.gmail.com        # (or imap-mail.outlook.com, imap.mail.yahoo.com, etc)
-export IMAP_EMAIL=your_email@gmail.com
-export IMAP_PASSWORD=your_app_password # (app-specific password, not your regular password)
-```
+### **Phase 2 — LLM Calibration** (Next)
+- Pick an LLM provider (OpenAI, Anthropic, Gemini, Ollama)
+- Set LLM API key
+- Run against real LLM
+- Tune categorization rules
+- **Test:** `python main.py --phase 2`
 
-**Supported IMAP providers:**
-- Gmail: `imap.gmail.com`
-- Outlook: `imap-mail.outlook.com`
-- Yahoo: `imap.mail.yahoo.com`
-- ProtonMail: `imap.protonmail.com`
-- Apple iCloud: `imap.mail.me.com`
-- Zoho: `imap.zoho.com`
-- Any corporate/self-hosted email
+### **Phase 3 — Wallet API Integration**
+- Get Wallet Premium + API token
+- Bootstrap: fetch real accounts/categories
+- Post actual records to Wallet
+- **Test:** `python main.py --phase 3`
 
-See **[EMAIL_PROVIDERS.md](EMAIL_PROVIDERS.md)** for detailed setup by provider.
-
-### Gmail API (Optional, Optimized)
-
-For Gmail users who want faster API access with OAuth:
-
-```bash
-export EMAIL_PROVIDER=gmail
-# Follow GMAIL_SETUP.md for OAuth setup
-```
-
-**Note:** Gmail API is faster but requires Google Cloud setup. IMAP works fine and is simpler.
+### **Phase 4 — Production Hardening**
+- Set up cron/scheduler
+- Alerting for dead-letter queue
+- Monitor 20K record limit
+- **Run:** `python main.py --phase 4` + cron
 
 ---
 
-## LLM Provider Configuration
-
-### OpenAI (Default)
-Best balance of cost and quality. Supports GPT-4o, GPT-4 Turbo, etc.
-
-```bash
-export LLM_PROVIDER=openai
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL=gpt-4o  # optional; defaults to gpt-4o
-```
-
-Get API key: https://platform.openai.com/api-keys
-
-### Anthropic (Claude)
-Best accuracy. Supports Claude Sonnet, Opus, etc.
-
-```bash
-export LLM_PROVIDER=anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
-export ANTHROPIC_MODEL=claude-sonnet-4-20250514  # optional
-```
-
-Get API key: https://console.anthropic.com/api-keys
-
-### Google Gemini
-Fast and capable. Supports Gemini 2.0, etc.
-
-```bash
-export LLM_PROVIDER=gemini
-export GEMINI_API_KEY=AIzaSy...
-export GEMINI_MODEL=gemini-2.0-flash  # optional
-```
-
-Get API key: https://aistudio.google.com/apikey
-
-### Ollama (Local, Self-Hosted)
-Run models locally. No API keys needed. Best for privacy.
-
-```bash
-# First, install & run Ollama
-# https://ollama.ai
-
-# Pull a model
-ollama pull llama2  # or mistral, neural-chat, etc
-
-# Then configure
-export LLM_PROVIDER=ollama
-export OLLAMA_BASE_URL=http://localhost:11434
-export OLLAMA_MODEL=llama2
-```
-
-Run Ollama: https://ollama.ai
-
----
-
-## Key Features
+## 🎯 Key Features
 
 ### **Intelligent Categorization**
-Claude LLM automatically categorizes transactions based on merchant/context:
-- Starbucks, grocery stores → "Food & Drinks"
-- Netflix, Spotify, SaaS → "Entertainment" / "Subscriptions"
-- Uber, parking, fuel → "Transport"
-- Doctor, pharmacy → "Health"
-- And more...
+Claude/GPT/Gemini automatically learns from email content:
+- **Merchants** → "Food & Drinks", "Transport", "Shopping"
+- **Amounts** → extracts currency and sign
+- **Dates** → parses email timestamps
+- **Accounts** → matches configured accounts
+- **Custom rules** → easily tunable per LLM
 
-### **Error Handling & Retry Logic**
-- **LLM timeouts:** Retry 2x, then dead-letter
-- **Wallet 429 (rate limit):** Respect Retry-After header
-- **Wallet 5xx:** Exponential backoff (2s → 8s → 32s)
-- **Wallet 4xx:** Log for manual review (no auto-retry)
+### **Error Handling**
+
+| Error | Action |
+|-------|--------|
+| LLM timeout | Retry 2x, then dead-letter |
+| Rate limit (429) | Backoff, respect Retry-After |
+| Server error (5xx) | Exponential backoff, 3 retries |
+| Client error (4xx) | Log for manual review |
+| Network timeout | Retry 2x, then dead-letter |
 
 ### **Deduplication**
-Email UIDs stored in SQLite prevent duplicate submissions on pipeline re-runs.
-
-### **Dead Letter Queue**
-Failed emails logged as JSONL for manual review:
-```jsonl
-{"timestamp": "2025-05-30T09:58:29.317Z", "email_id": "...", "reason": "Validation error: ..."}
-```
+Email UIDs stored in SQLite → prevents duplicate submissions on pipeline re-runs
 
 ### **State Tracking**
 ```
 pending → llm_processing → api_pending → api_success
-                              ↓
-                        validation_error / llm_error / api_client_error
+            ↓                     ↓
+         llm_error      validation_error / api_client_error / api_server_error
 ```
 
-## API Constraints Handled
+### **Dead Letter Queue**
+Failed emails logged as JSONL for manual review + pattern analysis
 
-| Constraint | Implementation |
-|------------|-----------------|
-| 300 req/hr rate limit | Cache accounts/categories; refresh every 30 min |
-| 20 records per batch | Group emails; post in multiple calls if needed |
-| Max 20,000 records | Track count; alert at 18,000 |
-| Bank-synced accounts read-only | LLM targets manual accounts only |
-| Partial success (207) | Iterate per-record; log each result |
-| Max field lengths (255 chars) | Truncate note and counterParty before posting |
-| recordDate constraints | Reject >24h future or >10 years past |
-
-## Testing
-
-**Run all tests:**
-```bash
-conda run -n wallet python tests/test_email_parser.py
-conda run -n wallet python tests/test_validator.py
-```
-
-**Or inline:**
-```bash
-conda run -n wallet python -c "from email_parser import EmailParser; ..."
-```
-
-## Next Steps
-
-1. **Phase 2:** Set `ANTHROPIC_API_KEY` and calibrate LLM on real emails
-2. **Phase 3:** Add `WALLET_API_TOKEN` and test against live Wallet API
-3. **Phase 4:** Set up cron job for unattended runs
-
-## Troubleshooting
-
-**"Initial sync in progress (409)"**
-- Wallet API returns 409 on first-time accounts. Wait 5 minutes before retrying.
-
-**"Rate limited (429)"**
-- Check Retry-After header in response. Wait that duration.
-
-**No emails found**
-- Check IMAP credentials in `.env`
-- Verify you have unread emails in inbox
-- In Phase 1, uses mock emails automatically
-
-**LLM extraction fails**
-- Ensure `ANTHROPIC_API_KEY` is set
-- Check email text is valid (not truncated HTML)
-- Review LLM output in dead letter queue
-
-## API Reference
-
-- **Wallet API docs:** https://rest.budgetbakers.com/wallet/reference
-- **Claude API:** https://docs.anthropic.com/
-
-## Security Notes
-
-- **API tokens:** Stored in `.env` (never in code)
-- **Email PII:** Masked in INFO logs; full detail in DEBUG logs only
-- **LLM prompt injection:** Email content wrapped in clear delimiters
-- **Duplicate records:** Checked before every POST
+### **No Vendor Lock-In**
+- **Email:** IMAP works with any provider, easy to switch
+- **LLM:** Change provider via env var, no code changes
+- **Wallet:** Standard REST API, can integrate with other systems
 
 ---
 
-**Last updated:** 2026-05-30  
-**Phase:** 1 (Local Skeleton) ✅  
-**Next:** Phase 2 (LLM Calibration)
+## 📋 Configuration
+
+### .env File
+
+Copy and edit:
+```bash
+cp .env.example .env
+```
+
+**LLM Setup:**
+```bash
+# Pick one provider
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+# OR
+ANTHROPIC_API_KEY=sk-ant-...
+# OR
+GEMINI_API_KEY=AIzaSy...
+# OR (local)
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+**Email Setup (Single Account):**
+```bash
+EMAIL_PROVIDER=imap  # or gmail, mock
+IMAP_HOST=imap.gmail.com
+IMAP_EMAIL=your_email@gmail.com
+IMAP_PASSWORD=your_app_password
+```
+
+**Wallet Setup (Phase 3+):**
+```bash
+WALLET_API_TOKEN=your_token_here
+```
+
+See `.env.example` for all options.
+
+### email_accounts.json (Multi-Account)
+
+```json
+{
+  "accounts": [
+    {
+      "name": "Personal Gmail",
+      "provider": "imap",
+      "enabled": true,
+      "host": "imap.gmail.com",
+      "port": 993,
+      "email": "personal@gmail.com",
+      "password": "app_password",
+      "category_prefix": "Personal"
+    },
+    {
+      "name": "Work Outlook",
+      "provider": "imap",
+      "enabled": true,
+      "host": "imap-mail.outlook.com",
+      "port": 993,
+      "email": "work@company.com",
+      "password": "work_password",
+      "category_prefix": "Work"
+    }
+  ]
+}
+```
+
+[Full documentation → MULTI_ACCOUNT.md](MULTI_ACCOUNT.md)
+
+---
+
+## 🎮 Commands
+
+### Single-Account Mode (Default)
+
+```bash
+# Phase 1: Offline testing (no API keys)
+python main.py --phase 1
+
+# Phase 2: With LLM API key
+python main.py --phase 2
+
+# Phase 3: With Wallet API token
+python main.py --phase 3
+
+# Bootstrap only (fetch accounts/categories)
+python main.py --phase 1 --bootstrap
+```
+
+### Multi-Account Mode
+
+```bash
+# Run with multiple email accounts
+python main.py --phase 2 --multi-account
+
+# View configured accounts
+python main.py --show-accounts
+
+# Show accounts as JSON
+python main.py --show-accounts | jq
+```
+
+---
+
+## 📊 Project Structure
+
+```
+wallet/
+├── main.py                    # Entry point; orchestrates pipeline
+├── config.py                  # Loads env vars; phase validation
+├── email_client.py            # Gmail API & IMAP email fetchers
+├── email_parser.py            # HTML→text; metadata extraction
+├── llm_client.py              # Claude/GPT/Gemini/Ollama wrapper (multi-provider)
+├── multi_account.py           # Multi-account orchestration
+├── validator.py               # Post-LLM field validation
+├── wallet_client.py           # Wallet REST API client
+├── state_store.py             # SQLite tracking (emails, caches)
+├── dead_letter.py             # JSONL for failed records
+├── email_accounts.json        # Multi-account config (example)
+├── .env.example               # Environment variable template
+├── requirements.txt           # Python dependencies
+├── README.md                  # This file
+├── PROVIDERS.md               # LLM provider setup guide
+├── GMAIL_SETUP.md             # Gmail API OAuth setup
+├── EMAIL_PROVIDERS.md         # Email provider guide (IMAP, etc)
+├── MULTI_ACCOUNT.md           # Multi-account setup guide
+├── tests/
+│   ├── test_email_parser.py
+│   ├── test_validator.py
+│   └── test_wallet_client.py
+└── logs/
+    └── wallet.log             # Operational logs
+```
+
+---
+
+## 🧪 Testing
+
+### Run All Tests
+
+```bash
+conda run -n wallet python -c "
+import sys; sys.path.insert(0, '.')
+
+# Email parser tests
+from email_parser import EmailParser, EmailMetadata
+from datetime import datetime
+parser = EmailParser()
+html = '<html><body><p>Hello <b>World</b></p></body></html>'
+text = parser.extract_text_from_html(html)
+assert 'Hello' in text and 'World' in text
+print('✓ Email parser tests passed')
+
+# Validator tests
+from validator import RecordValidator
+from datetime import timedelta
+account_map = {'Checking': '123e4567'}
+category_map = {'Food & Drinks': '456e7890'}
+validator = RecordValidator(account_map, category_map)
+record = {
+    'amount': -45.99,
+    'recordDate': (datetime.utcnow() - timedelta(hours=1)).isoformat() + 'Z',
+    'paymentType': 'debit_card',
+    'counterParty': 'Starbucks',
+    'note': 'Coffee',
+    'accountName': 'Checking',
+    'categoryName': 'Food & Drinks',
+    'skipReason': None,
+}
+is_valid, error = validator.validate_record(record)
+assert is_valid, error
+print('✓ Validator tests passed')
+"
+```
+
+### Manual Testing
+
+```bash
+# Test Phase 1 (offline)
+python main.py --phase 1
+
+# Test with your LLM provider
+python main.py --phase 2
+
+# Test multi-account
+python main.py --show-accounts
+python main.py --phase 2 --multi-account
+```
+
+---
+
+## 🔐 Security
+
+### Best Practices
+
+- **API tokens:** Store in `.env` (never in code)
+- **Email passwords:** Use app-specific passwords, not regular passwords
+- **Credentials:** Both files in `.gitignore` (auto-excluded from git)
+- **Token security:** Auto-refreshed, stored securely
+- **Email PII:** Masked in INFO logs, full detail in DEBUG logs only
+- **LLM injection:** Email content wrapped in clear delimiters
+
+### Secrets Management
+
+```bash
+# Option 1: .env file (easiest for single machine)
+echo "OPENAI_API_KEY=sk-..." >> .env
+
+# Option 2: Environment variables (production)
+export OPENAI_API_KEY=sk-...
+python main.py --phase 2
+
+# Option 3: Secrets manager (large deployments)
+# Use AWS Secrets Manager, HashiCorp Vault, etc
+```
+
+---
+
+## 📈 API Constraints Handled
+
+| Constraint | Implementation |
+|-----------|---|
+| 300 req/hr rate limit | Cache accounts/categories; refresh every 30 min |
+| 20 records per batch | Group emails; post in multiple calls if needed |
+| Max 20,000 records per user | Track count; alert at 18,000 |
+| Bank-synced accounts read-only | LLM targets manual accounts only |
+| Partial success (207) | Iterate per-record; log each result |
+| Max field lengths (255 chars) | Truncate note/counterParty before posting |
+| recordDate constraints | Reject >24h future or >10 years past |
+| OAuth token expiry | Auto-refresh when expired |
+
+---
+
+## 🤝 Contributing
+
+### Adding a New LLM Provider
+
+1. Create class in `llm_client.py` extending `LLMProvider`
+2. Implement `extract()` method
+3. Add to `create_llm_client()` factory
+4. Add to `PROVIDERS.md`
+
+### Adding a New Email Provider API
+
+1. Create class in `email_client.py` extending `EmailClient`
+2. Implement `fetch_new_emails()` and `mark_as_processed()`
+3. Add to `create_email_client()` factory
+4. Add to `EMAIL_PROVIDERS.md`
+
+---
+
+## 📞 Support & Troubleshooting
+
+### Common Issues
+
+**"LLM API key not configured"**
+- Set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `OLLAMA_BASE_URL`
+- Check `.env` file has correct value
+
+**"Email credentials invalid"**
+- For IMAP: Check app-specific password (not regular password)
+- For Gmail API: Follow GMAIL_SETUP.md for OAuth setup
+
+**"Wallet API returns 409"**
+- Initial sync in progress; wait 5 minutes and retry
+
+**"Rate limited (429)"**
+- Respect Retry-After header; system auto-backoffs
+
+### Debug Mode
+
+```bash
+export LOG_LEVEL=DEBUG
+python main.py --phase 2
+```
+
+### Check Configured Accounts
+
+```bash
+python main.py --show-accounts
+```
+
+### Check Pipeline Stats
+
+Logs show:
+- Emails fetched per account
+- Records validated
+- Records posted
+- Dead letter queue items
+
+---
+
+## 📚 Learn More
+
+- **[PROVIDERS.md](PROVIDERS.md)** — Compare LLM providers, pricing, setup
+- **[GMAIL_SETUP.md](GMAIL_SETUP.md)** — Step-by-step Gmail OAuth
+- **[EMAIL_PROVIDERS.md](EMAIL_PROVIDERS.md)** — IMAP setup for all providers
+- **[MULTI_ACCOUNT.md](MULTI_ACCOUNT.md)** — Monitor multiple emails
+- **[Wallet API](https://rest.budgetbakers.com/wallet/reference)** — Official API docs
+
+---
+
+## 📈 Roadmap
+
+### Phase 4 Features (Upcoming)
+- [ ] Scheduled runs (cron/systemd timer)
+- [ ] Alerting (email/Slack for dead-letter queue)
+- [ ] Web UI for manual review
+- [ ] Batch API support (reduce costs)
+- [ ] Transfer pair detection (skip transfers)
+- [ ] Receipt image OCR (extract from attachments)
+
+### Provider APIs (Planned)
+- [ ] Outlook/Microsoft Graph
+- [ ] Yahoo Mail API
+- [ ] ProtonMail API
+
+---
+
+## 📄 License & Credits
+
+**Implementation Date:** May 30, 2026  
+**Current Phase:** 1 (Local Skeleton) ✅  
+**Status:** Ready for Phase 2 (LLM Calibration)
+
+Built with:
+- Python 3.11+
+- Anthropic Claude / OpenAI GPT / Google Gemini / Ollama LLMs
+- IMAP & Gmail API for email
+- Wallet REST API
+- SQLite for state
+
+---
+
+## 🎯 Next Steps
+
+**Pick an LLM provider:**
+1. [PROVIDERS.md](PROVIDERS.md) — Compare options
+2. Get API key (OpenAI, Anthropic, or Gemini) or install Ollama
+3. Set `LLM_PROVIDER` and API key in `.env`
+
+**Pick an email provider:**
+1. [EMAIL_PROVIDERS.md](EMAIL_PROVIDERS.md) — IMAP setup for any provider
+2. Or [GMAIL_SETUP.md](GMAIL_SETUP.md) — Gmail OAuth (optional)
+3. Set `EMAIL_PROVIDER` and credentials in `.env`
+
+**Run Phase 2:**
+```bash
+python main.py --phase 2
+```
+
+**Then Phase 3 when ready (with Wallet API token):**
+```bash
+python main.py --phase 3
+```
+
+**Questions?** Check the relevant docs above or review logs with `LOG_LEVEL=DEBUG`.
+
+---
+
+Last updated: 2026-05-30  
+Author: Mateh Elismar  
+Email: matematicoelismar@gmail.com
