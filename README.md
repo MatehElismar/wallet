@@ -26,7 +26,11 @@ Dead Letter Queue (JSONL) → Log failed items for manual review
 
 - **Python 3.11+** with conda
 - **Wallet API Token** (requires Premium plan) — get from [web.budgetbakers.com/settings/apiTokens](https://web.budgetbakers.com/settings/apiTokens)
-- **Claude API Key** — get from [console.anthropic.com](https://console.anthropic.com)
+- **One of these LLM providers:**
+  - **OpenAI** (GPT-4o, etc) — `OPENAI_API_KEY` from [platform.openai.com](https://platform.openai.com)
+  - **Anthropic** (Claude) — `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com)
+  - **Google Gemini** — `GEMINI_API_KEY` from [aistudio.google.com](https://aistudio.google.com)
+  - **Ollama** (local) — self-hosted at `http://localhost:11434`
 - **Gmail/IMAP Setup** (optional for Phase 1-2 testing)
 
 ### Setup
@@ -47,9 +51,39 @@ Dead Letter Queue (JSONL) → Log failed items for manual review
    ```bash
    cp .env.example .env
    # Edit .env with your credentials:
-   # - ANTHROPIC_API_KEY=sk-ant-...
-   # - WALLET_API_TOKEN=your_token_here (for Phase 3+)
-   # - EMAIL_PROVIDER=imap or gmail
+   ```
+
+   **Choose your LLM provider:**
+
+   **Option A: OpenAI (Default)**
+   ```bash
+   LLM_PROVIDER=openai
+   OPENAI_API_KEY=sk-...
+   ```
+
+   **Option B: Anthropic (Claude)**
+   ```bash
+   LLM_PROVIDER=anthropic
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+   **Option C: Google Gemini**
+   ```bash
+   LLM_PROVIDER=gemini
+   GEMINI_API_KEY=AIzaSy...
+   ```
+
+   **Option D: Ollama (Local, Self-Hosted)**
+   ```bash
+   LLM_PROVIDER=ollama
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=llama2  # or mistral, neural-chat, etc
+   ```
+
+   **Always set (for Phase 3+):**
+   ```bash
+   WALLET_API_TOKEN=your_token_here
+   EMAIL_PROVIDER=imap or gmail
    ```
 
 4. **Run Phase 1 (Local Testing)**
@@ -80,14 +114,39 @@ python main.py --phase 1
 
 ### **Phase 2 — LLM Calibration** (Next)
 **What's needed:**
-- [ ] Connect to real Claude API (via `ANTHROPIC_API_KEY`)
+- [ ] Pick an LLM provider and set its API key
 - [ ] Run 20-30 real emails through the LLM
 - [ ] Tune prompt heuristics based on misclassifications
 - [ ] Validate all 8 post-LLM validation steps
 
-**Commands:**
+**Commands (pick one):**
+
+**OpenAI:**
 ```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY=sk-...
+python main.py --phase 2
+```
+
+**Anthropic:**
+```bash
+export LLM_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
+python main.py --phase 2
+```
+
+**Gemini:**
+```bash
+export LLM_PROVIDER=gemini
+export GEMINI_API_KEY=AIzaSy...
+python main.py --phase 2
+```
+
+**Ollama (local):**
+```bash
+export LLM_PROVIDER=ollama
+export OLLAMA_BASE_URL=http://localhost:11434
+export OLLAMA_MODEL=llama2
 python main.py --phase 2
 ```
 
@@ -141,6 +200,61 @@ wallet/
 │   └── test_wallet_client.py
 └── README.md                # This file
 ```
+
+## LLM Provider Configuration
+
+### OpenAI (Default)
+Best balance of cost and quality. Supports GPT-4o, GPT-4 Turbo, etc.
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL=gpt-4o  # optional; defaults to gpt-4o
+```
+
+Get API key: https://platform.openai.com/api-keys
+
+### Anthropic (Claude)
+Best accuracy. Supports Claude Sonnet, Opus, etc.
+
+```bash
+export LLM_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_MODEL=claude-sonnet-4-20250514  # optional
+```
+
+Get API key: https://console.anthropic.com/api-keys
+
+### Google Gemini
+Fast and capable. Supports Gemini 2.0, etc.
+
+```bash
+export LLM_PROVIDER=gemini
+export GEMINI_API_KEY=AIzaSy...
+export GEMINI_MODEL=gemini-2.0-flash  # optional
+```
+
+Get API key: https://aistudio.google.com/apikey
+
+### Ollama (Local, Self-Hosted)
+Run models locally. No API keys needed. Best for privacy.
+
+```bash
+# First, install & run Ollama
+# https://ollama.ai
+
+# Pull a model
+ollama pull llama2  # or mistral, neural-chat, etc
+
+# Then configure
+export LLM_PROVIDER=ollama
+export OLLAMA_BASE_URL=http://localhost:11434
+export OLLAMA_MODEL=llama2
+```
+
+Run Ollama: https://ollama.ai
+
+---
 
 ## Key Features
 

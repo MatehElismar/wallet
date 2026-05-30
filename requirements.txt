@@ -1,10 +1,20 @@
+# LLM Providers (install only what you need)
 anthropic==0.28.0
+openai==1.35.10
+google-generativeai==0.7.2
+requests==2.31.0
+# ollama is installed separately, no pip dependency needed
+
+# Email & APIs
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
 google-api-python-client==2.107.0
 imapclient==3.0.1
+
+# Text processing
 beautifulsoup4==4.12.3
 html2text==2024.2.26
+
+# Utilities
 python-dotenv==1.0.1
-requests==2.31.0
 apscheduler==3.10.4

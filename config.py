@@ -10,9 +10,19 @@ logger = logging.getLogger(__name__)
 WALLET_API_TOKEN = os.getenv("WALLET_API_TOKEN", "")
 WALLET_API_BASE_URL = os.getenv("WALLET_API_BASE_URL", "https://api.budgetbakers.com")
 
-# Claude LLM
+# LLM Provider Configuration
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()  # anthropic, openai, gemini, ollama
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
 
 # Email
 EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "gmail").lower()

@@ -9,7 +9,7 @@ import sys
 from typing import List, Dict
 from email_parser import EmailParser
 from email_client import create_email_client
-from llm_client import LLMClient
+from llm_client import create_llm_client
 from wallet_client import WalletAPIClient
 from validator import RecordValidator
 from state_store import StateStore, ProcessingStatus
@@ -37,7 +37,7 @@ class EmailTxnPipeline:
         self.dead_letter = DeadLetterQueue()
 
         # LLM client available from Phase 1+ (for testing with mocks)
-        self.llm_client = LLMClient()
+        self.llm_client = create_llm_client()
 
         if self.phase >= 3:
             self.wallet_client = WalletAPIClient()
