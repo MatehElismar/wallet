@@ -12,7 +12,13 @@ Monitor multiple email accounts simultaneously with one pipeline. Perfect for:
 
 ### 1. Configure Accounts
 
-Edit `email_accounts.json`:
+Copy the example and customize:
+```bash
+cp email_accounts.example.json email_accounts.json
+# Edit email_accounts.json with your accounts
+```
+
+Edit your new `email_accounts.json`:
 
 ```json
 {

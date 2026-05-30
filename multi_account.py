@@ -66,7 +66,9 @@ class MultiAccountConfig:
     def load(self):
         """Load accounts from JSON file."""
         if not os.path.exists(self.config_file):
-            logger.warning(f"Config file {self.config_file} not found, using defaults")
+            logger.warning(f"Config file {self.config_file} not found")
+            if os.path.exists("email_accounts.example.json"):
+                logger.info("Copy example: cp email_accounts.example.json email_accounts.json")
             self._load_defaults()
             return
 

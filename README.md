@@ -295,6 +295,13 @@ See `.env.example` for all options.
 
 ### email_accounts.json (Multi-Account)
 
+Copy from example and customize:
+```bash
+cp email_accounts.example.json email_accounts.json
+# Edit email_accounts.json with your accounts
+```
+
+Example structure:
 ```json
 {
   "accounts": [
@@ -321,6 +328,8 @@ See `.env.example` for all options.
   ]
 }
 ```
+
+**Note:** `email_accounts.json` is git-ignored (not committed). Use `email_accounts.example.json` as reference.
 
 [Full documentation → MULTI_ACCOUNT.md](MULTI_ACCOUNT.md)
 

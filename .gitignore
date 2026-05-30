@@ -15,7 +15,11 @@ venv/
 
 # Project specific
 wallet.db
-token.json
+token*.json
 dead_letter.jsonl
 logs/
 *.log
+
+# User config (example provided)
+email_accounts.json
+.env
