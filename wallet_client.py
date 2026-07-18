@@ -35,11 +35,12 @@ class WalletAPIClient:
                 response.raise_for_status()
                 data = response.json()
 
-                accounts.extend(data.get("data", []))
+                accounts.extend(data.get("accounts", []))
 
-                if not data.get("nextOffset"):
+                next_offset = data.get("nextOffset")
+                if not next_offset or next_offset <= offset:
                     break
-                offset = data.get("nextOffset")
+                offset = next_offset
 
             except requests.exceptions.RequestException as e:
                 logger.error(f"Failed to fetch accounts: {e}")
@@ -64,11 +65,12 @@ class WalletAPIClient:
                 response.raise_for_status()
                 data = response.json()
 
-                categories.extend(data.get("data", []))
+                categories.extend(data.get("categories", []))
 
-                if not data.get("nextOffset"):
+                next_offset = data.get("nextOffset")
+                if not next_offset or next_offset <= offset:
                     break
-                offset = data.get("nextOffset")
+                offset = next_offset
 
             except requests.exceptions.RequestException as e:
                 logger.error(f"Failed to fetch categories: {e}")
@@ -90,13 +92,13 @@ class WalletAPIClient:
             logger.info(f"[DRY RUN] Would post {len(records)} records")
             for i, record in enumerate(records):
                 logger.info(f"  {i+1}. {record['counterParty']} {record['amount']} {record['paymentType']}")
-            return 200, [{"status": "success", "record": record} for record in records]
+            return 200, [{"status": "success"} for _ in records]
 
         try:
-            payload = {"records": records}
+            # API expects a bare JSON array, not {"records": [...]}
             response = self.session.post(
                 f"{self.base_url}/v1/api/records",
-                json=payload,
+                json=records,
                 timeout=15,
             )
 
@@ -104,13 +106,19 @@ class WalletAPIClient:
             if response.status_code == 207:
                 logger.warning("Partial success (207) from Wallet API")
                 data = response.json()
-                return 207, data.get("results", [])
+                # Response may be a bare array or wrapped
+                results = data if isinstance(data, list) else data.get("results", data.get("records", []))
+                return 207, results
 
-            # Handle other status codes
-            if response.status_code == 200:
+            # Handle 200/201 full success
+            if response.status_code in (200, 201):
                 logger.info(f"Successfully posted {len(records)} records")
-                data = response.json()
-                return 200, data.get("results", [])
+                try:
+                    data = response.json()
+                    results = data if isinstance(data, list) else data.get("results", data.get("records", []))
+                except Exception:
+                    results = []
+                return response.status_code, results
 
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After", "60")
@@ -134,20 +142,22 @@ class WalletAPIClient:
             logger.error(f"Request failed: {e}")
             return 500, []
 
-    def get_record_count(self) -> Optional[int]:
-        """Get total record count for this user."""
+    def get_labels(self) -> List[Dict]:
+        """Fetch all labels."""
         try:
             response = self.session.get(
-                f"{self.base_url}/v1/api/records",
-                params={"limit": 1},
+                f"{self.base_url}/v1/api/labels",
+                params={"limit": 200},
                 timeout=10,
             )
             response.raise_for_status()
             data = response.json()
-            return data.get("total", 0)
+            labels = data.get("labels", [])
+            logger.info(f"Fetched {len(labels)} labels")
+            return labels
         except Exception as e:
-            logger.error(f"Failed to fetch record count: {e}")
-            return None
+            logger.error(f"Failed to fetch labels: {e}")
+            return []
 
     def check_api_health(self) -> bool:
         """Quick check if API is reachable and token is valid."""

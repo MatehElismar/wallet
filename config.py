@@ -24,17 +24,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
 
-# Email (gmail, imap, or mock for testing)
-EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "mock").lower()
-GMAIL_CREDENTIALS_FILE = os.getenv("GMAIL_CREDENTIALS_FILE", "credentials.json")
-GMAIL_TOKEN_FILE = os.getenv("GMAIL_TOKEN_FILE", "token.json")
-
-# Note: IMAP settings below are only for single-account IMAP mode
-# For multi-account setup, use email_accounts.json instead
-IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com")
-IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
-IMAP_EMAIL = os.getenv("IMAP_EMAIL", "")
-IMAP_PASSWORD = os.getenv("IMAP_PASSWORD", "")
+# Email accounts are configured in email_accounts.json, not here.
 
 # Pipeline
 PIPELINE_RUN_INTERVAL_MINUTES = int(os.getenv("PIPELINE_RUN_INTERVAL_MINUTES", "15"))
@@ -56,11 +46,18 @@ RATE_LIMIT_THRESHOLD = 300
 def validate_config_for_phase(phase: int):
     """Validate required env vars based on implementation phase."""
     if phase >= 2:
-        if not ANTHROPIC_API_KEY:
-            raise ValueError("ANTHROPIC_API_KEY is required for Phase 2+")
+        provider_keys = {
+            "anthropic": ("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY),
+            "openai":    ("OPENAI_API_KEY",    OPENAI_API_KEY),
+            "gemini":    ("GEMINI_API_KEY",     GEMINI_API_KEY),
+            "ollama":    ("OLLAMA_BASE_URL",    OLLAMA_BASE_URL),
+        }
+        env_var, value = provider_keys.get(LLM_PROVIDER, ("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY))
+        if not value:
+            raise ValueError(f"{env_var} is required for Phase 2+ with provider '{LLM_PROVIDER}'")
 
     if phase >= 3:
         if not WALLET_API_TOKEN:
             raise ValueError("WALLET_API_TOKEN is required for Phase 3+")
 
-    logger.info(f"Configuration validated for Phase {phase}")
+    logger.info(f"Configuration validated for Phase {phase} (provider: {LLM_PROVIDER})")

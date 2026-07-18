@@ -86,31 +86,42 @@ class RecordValidator:
                     return False, f"Category is restricted and cannot be assigned: {category_name}"
 
             # Validate field lengths
-            if len(str(record.get("note", ""))) > 255:
-                return False, "Note field exceeds 255 characters"
-            if len(str(record.get("counterParty", ""))) > 255:
-                return False, "counterParty field exceeds 255 characters"
+            if len(str(record.get("note", "") or "")) > 255:
+                return False, "note field exceeds 255 characters"
+            if len(str(record.get("payee", "") or "")) > 255:
+                return False, "payee field exceeds 255 characters"
 
             return True, ""
 
         except Exception as e:
             return False, f"Validation error: {str(e)}"
 
-    def normalize_record(self, record: Dict) -> Dict:
+    def normalize_record(self, record: Dict, label_ids: list = None) -> Dict:
         """Normalize and sanitize a record after validation."""
         amount = float(record.get("amount", 0))
         account_name = record.get("accountName", "")
         category_name = record.get("categoryName")
 
+        payee = str(record.get("payee") or "").strip()[:255]
+        note_text = str(record.get("note") or "").strip()[:255]
+
+        # Combine payee + note into Wallet's single `note` field
+        if payee and note_text and payee.lower() != note_text.lower():
+            wallet_note = f"{payee} — {note_text}"[:255]
+        else:
+            wallet_note = payee or note_text
+
         normalized = {
             "amount": self._round_decimal(amount),
             "recordDate": record.get("recordDate"),
             "paymentType": record.get("paymentType"),
-            "counterParty": str(record.get("counterParty", ""))[:255],
-            "note": str(record.get("note", ""))[:255],
+            "note": wallet_note,
             "accountId": self.account_map.get(account_name),
-            "categoryId": self.category_map.get(category_name) if category_name else None,
         }
+        if category_name:
+            normalized["categoryId"] = self.category_map.get(category_name)
+        if label_ids:
+            normalized["labelIds"] = label_ids
         return normalized
 
     @staticmethod

@@ -19,6 +19,7 @@ token*.json
 dead_letter.jsonl
 logs/
 *.log
+api_discovery.json
 
 # User config (example provided)
 email_accounts.json

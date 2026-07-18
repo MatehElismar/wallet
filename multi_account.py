@@ -6,7 +6,6 @@ import os
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
 from email_client import (
-    create_email_client,
     EmailClient,
     GmailAPIClient,
     IMAPEmailClient,
@@ -30,6 +29,7 @@ class EmailAccount:
     credentials_file: Optional[str] = None
     token_file: Optional[str] = None
     category_prefix: Optional[str] = None
+    bank_hint: Optional[str] = None  # canonical bank key, e.g. "bhd", "popular"
 
     def to_dict(self) -> Dict:
         """Convert to dict for JSON serialization."""
@@ -50,6 +50,7 @@ class EmailAccount:
             "credentials_file": data.get("credentials_file"),
             "token_file": data.get("token_file"),
             "category_prefix": data.get("category_prefix"),
+            "bank_hint": data.get("bank_hint"),
         }
         # Remove None values for optional fields
         return EmailAccount(**{k: v for k, v in fields.items() if v is not None or k in ["name", "provider", "enabled"]})

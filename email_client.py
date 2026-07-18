@@ -2,14 +2,13 @@ import logging
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict
 from email_parser import EmailMetadata
-import config
 
 logger = logging.getLogger(__name__)
 
 class EmailClient:
     """Base email client interface."""
 
-    def fetch_new_emails(self) -> List[EmailMetadata]:
+    def fetch_new_emails(self, days_back: int = 0) -> List[EmailMetadata]:
         """Fetch unread emails since last run."""
         raise NotImplementedError
 
@@ -21,11 +20,11 @@ class EmailClient:
 class IMAPEmailClient(EmailClient):
     """IMAP-based email client for Gmail or any IMAP provider."""
 
-    def __init__(self, host: str = None, port: int = None, email: str = None, password: str = None):
-        self.host = host or config.IMAP_HOST
-        self.port = port or config.IMAP_PORT
-        self.email = email or config.IMAP_EMAIL
-        self.password = password or config.IMAP_PASSWORD
+    def __init__(self, host: str, port: int, email: str, password: str):
+        self.host = host
+        self.port = port
+        self.email = email
+        self.password = password
         self.connection = None
 
     def connect(self):
@@ -33,7 +32,9 @@ class IMAPEmailClient(EmailClient):
         try:
             import imapclient
             self.connection = imapclient.IMAPClient(self.host, port=self.port, ssl=True)
-            self.connection.login(self.email, self.password)
+            # Gmail App Passwords are 16 chars; strip spaces added for readability
+            password = self.password.replace(" ", "") if self.password else self.password
+            self.connection.login(self.email, password)
             logger.info(f"Connected to {self.host} as {self.email}")
         except Exception as e:
             logger.error(f"Failed to connect to IMAP: {e}")
@@ -167,7 +168,7 @@ class MockEmailClient(EmailClient):
             ),
         ]
 
-    def fetch_new_emails(self) -> List[EmailMetadata]:
+    def fetch_new_emails(self, days_back: int = 0) -> List[EmailMetadata]:
         logger.info(f"Mock: Returning {len(self.emails)} mock emails")
         return self.emails
 
@@ -178,9 +179,9 @@ class MockEmailClient(EmailClient):
 class GmailAPIClient(EmailClient):
     """Gmail API client using OAuth 2.0."""
 
-    def __init__(self, credentials_file: str = None, token_file: str = None):
-        self.credentials_file = credentials_file or config.GMAIL_CREDENTIALS_FILE
-        self.token_file = token_file or config.GMAIL_TOKEN_FILE
+    def __init__(self, credentials_file: str, token_file: str):
+        self.credentials_file = credentials_file
+        self.token_file = token_file
         self.service = None
         self._authenticate()
 
@@ -236,7 +237,7 @@ class GmailAPIClient(EmailClient):
             logger.error("See GMAIL_SETUP.md for troubleshooting")
             raise
 
-    def fetch_new_emails(self) -> List[EmailMetadata]:
+    def fetch_new_emails(self, days_back: int = 0) -> List[EmailMetadata]:
         """Fetch unread emails from Gmail."""
         if not self.service:
             logger.error("Gmail service not initialized")
@@ -343,24 +344,3 @@ class GmailAPIClient(EmailClient):
             logger.debug(f"Marked Gmail email {email_id} as read")
         except Exception as e:
             logger.warning(f"Failed to mark Gmail email as read: {e}")
-
-
-def create_email_client() -> EmailClient:
-    """Factory function to create the appropriate email client."""
-    if config.EMAIL_PROVIDER == "gmail":
-        logger.info("Using Gmail API")
-        try:
-            return GmailAPIClient()
-        except Exception as e:
-            logger.error(f"Failed to initialize Gmail API: {e}")
-            logger.warning("Falling back to mock emails")
-            return MockEmailClient()
-    elif config.EMAIL_PROVIDER == "imap":
-        logger.info("Using IMAP email client")
-        return IMAPEmailClient()
-    elif config.EMAIL_PROVIDER == "mock":
-        logger.info("Using mock email client (testing mode)")
-        return MockEmailClient()
-    else:
-        logger.warning(f"Unknown email provider: {config.EMAIL_PROVIDER}, defaulting to mock")
-        return MockEmailClient()
