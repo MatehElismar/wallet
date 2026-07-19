@@ -77,14 +77,17 @@ class IMAPEmailClient(EmailClient):
                 logger.info("No new emails")
                 return emails
 
-            # Fetch raw messages (simpler approach)
-            response = self.connection.fetch(msg_ids, [b"RFC822"])
+            # PEEK is essential: a regular RFC822/BODY fetch marks the message \Seen.
+            # IMAP servers return the fetched payload under BODY[] (without PEEK).
+            response = self.connection.fetch(msg_ids, [b"BODY.PEEK[]"])
 
             for msg_id, data in response.items():
                 try:
-                    # Parse the raw RFC822 message
+                    # Parse the raw message returned by the non-mutating PEEK fetch.
                     import email as email_lib
-                    raw_message = data[b"RFC822"]
+                    raw_message = data.get(b"BODY[]") or data.get(b"BODY.PEEK[]")
+                    if raw_message is None:
+                        raise KeyError("IMAP BODY.PEEK[] response did not contain a message body")
                     msg = email_lib.message_from_bytes(raw_message)
 
                     subject = msg.get("Subject", "(no subject)")
