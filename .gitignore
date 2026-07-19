@@ -1,0 +1,18 @@
+# Python runtime and tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+
+# Local configuration and generated migration SQL
+.env
+.env.*
+!.env.example
+*.sql
+
+# Local editor/OS files
+.DS_Store
+.idea/
+.vscode/

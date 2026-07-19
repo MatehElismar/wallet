@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wallet-v2-postgres
+    environment:
+      POSTGRES_USER: wallet_v2
+      POSTGRES_PASSWORD: wallet_v2
+      POSTGRES_DB: wallet_v2
+    ports:
+      - "5432:5432"
+    volumes:
+      - wallet-v2-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet_v2 -d wallet_v2"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  wallet-v2-pgdata:
