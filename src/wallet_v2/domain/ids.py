@@ -53,3 +53,15 @@ def new_wallet_attempt_id() -> WalletAttemptId:
 
 def new_receipt_id() -> ReceiptId:
     return ReceiptId(uuid4())
+
+
+SubscriptionId = NewType("SubscriptionId", UUID)
+NotificationOutboxId = NewType("NotificationOutboxId", UUID)
+
+
+def new_subscription_id() -> SubscriptionId:
+    return SubscriptionId(uuid4())
+
+
+def new_notification_outbox_id() -> NotificationOutboxId:
+    return NotificationOutboxId(uuid4())

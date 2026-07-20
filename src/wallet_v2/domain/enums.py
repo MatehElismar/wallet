@@ -230,6 +230,39 @@ class TransactionDirection(_StrEnum):
     CREDIT = "credit"
 
 
+class SubscriptionStatus(_StrEnum):
+    """Lifecycle of a browser or device push subscription."""
+
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    EXPIRED = "expired"
+
+
+class NotificationIntentKind(_StrEnum):
+    """Actionable reconciliation events that trigger push notifications."""
+
+    REVIEW_PENDING = "review_pending"
+    STATEMENT_READY = "statement_ready"
+    BATCH_APPROVED = "batch_approved"
+    IMPORT_COMPLETE = "import_complete"
+    RUN_FAILED = "run_failed"
+
+
+class OutboxDeliveryStatus(_StrEnum):
+    """Lifecycle of a notification outbox record.
+
+    ``pending``  -> ``claimed``  -> ``delivered`` | ``failed``
+    ``failed``   -> ``claimed``  -> ``delivered`` | ``failed`` (retry)
+    ``stale``    terminal — subscription disabled during delivery
+    """
+
+    PENDING = "pending"
+    CLAIMED = "claimed"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+    STALE = "stale"
+
+
 class AuditEventKind(_StrEnum):
     """Categorizes an :class:`AuditEvent` row for filtering and retention."""
 
@@ -249,3 +282,6 @@ class AuditEventKind(_StrEnum):
     STATEMENT_BATCH_DECIDED = "statement_batch_decided"
     RECONCILIATION_RESOLVED = "reconciliation_resolved"
     FINANCIAL_ACCOUNT_MAPPED = "financial_account_mapped"
+    NOTIFICATION_ENQUEUED = "notification_enqueued"
+    NOTIFICATION_DELIVERED = "notification_delivered"
+    NOTIFICATION_FAILED = "notification_failed"

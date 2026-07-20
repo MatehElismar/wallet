@@ -21,6 +21,8 @@ from wallet_v2.persistence.models.reconciliation import (
     StatementReviewBatch,
     TransactionObservation,
 )
+from wallet_v2.persistence.models.notification_outbox import NotificationOutbox
+from wallet_v2.persistence.models.push_subscription import PushSubscription
 from wallet_v2.persistence.models.source_message import (
     MessageContentMetadata,
     SourceMessage,
@@ -48,4 +50,6 @@ __all__ = [
     "ReconciliationLink",
     "StatementReviewBatch",
     "FinancialEvent",
+    "PushSubscription",
+    "NotificationOutbox",
 ]

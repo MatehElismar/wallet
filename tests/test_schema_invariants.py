@@ -437,6 +437,8 @@ class TestMetadataCompleteness:
             "reconciliation_links",
             "statement_review_batches",
             "financial_events",
+            "push_subscriptions",
+            "notification_outbox",
         }
         missing = expected - table_names
         extra = table_names - expected

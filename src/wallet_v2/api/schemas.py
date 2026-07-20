@@ -151,3 +151,45 @@ class DryRunImportResponse(BaseModel):
 
 class ErrorDetail(BaseModel):
     detail: str
+
+
+class PushConfigResponse(BaseModel):
+    """Runtime push configuration exposed to the PWA frontend."""
+
+    enabled: bool
+    public_key: str | None = None
+    fcm_project_id: str | None = None
+
+
+class RegisterSubscriptionRequest(BaseModel):
+    """Browser Push API subscription payload."""
+
+    endpoint: str = Field(min_length=1, max_length=2048)
+    keys_p256dh: str = Field(min_length=1)
+    keys_auth: str = Field(min_length=1)
+    user_agent: str | None = Field(None, max_length=512)
+
+
+class RegisterSubscriptionResponse(BaseModel):
+    subscription_id: UUID
+    status: str
+
+
+class DisableSubscriptionResponse(BaseModel):
+    subscription_id: UUID
+    status: str
+
+
+class SubscriptionStatusResponse(BaseModel):
+    active_count: int
+    disabled_count: int
+    subscriptions: list["SubscriptionView"]
+
+
+class SubscriptionView(BaseModel):
+    subscription_id: UUID
+    endpoint: str
+    status: str
+    created_at: datetime
+    disabled_at: datetime | None = None
+    disabled_reason: str | None = None

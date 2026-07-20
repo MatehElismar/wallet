@@ -114,3 +114,37 @@ class WalletClient(Protocol):
     def submit(
         self, *, idempotency_key: str, payload: dict[str, object]
     ) -> WalletSubmissionResult: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PushMessage:
+    """A push message to deliver through the provider."""
+
+    endpoint: str
+    keys_p256dh: str
+    keys_auth: str
+    title: str
+    body: str
+    metadata: dict[str, object] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PushDeliveryResult:
+    """Outcome of delivering one push message."""
+
+    success: bool
+    provider_message_id: str | None = None
+    error_kind: str | None = None
+    error_message: str | None = None
+    subscription_stale: bool = False
+
+
+class PushProvider(Protocol):
+    """Deliver a push notification to a browser subscription.
+
+    The contract is stateless: the provider receives a single message and
+    returns a result. If the provider reports the subscription as stale,
+    callers must disable the subscription.
+    """
+
+    def send(self, message: PushMessage) -> PushDeliveryResult: ...

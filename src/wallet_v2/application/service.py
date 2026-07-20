@@ -15,6 +15,8 @@ from wallet_v2.application.contracts import (
     TransactionExtractor,
     WalletClient,
 )
+from wallet_v2.application.outbox import OutboxService
+from wallet_v2.domain.notifications import NotificationIntent
 from wallet_v2.domain.enums import (
     AttemptStatus,
     AuditEventKind,
@@ -70,9 +72,16 @@ class WorkflowError(ValueError):
 class WalletWorkflow:
     """Coordinates persistence and adapter calls without hiding run identity."""
 
-    def __init__(self, session: Session, *, now: Callable[[], datetime] = _utcnow):
+    def __init__(
+        self,
+        session: Session,
+        *,
+        now: Callable[[], datetime] = _utcnow,
+        outbox_service: OutboxService | None = None,
+    ):
         self.session = session
         self.now = now
+        self._outbox = outbox_service or OutboxService(session)
 
     def start_run(
         self,
@@ -114,6 +123,16 @@ class WalletWorkflow:
             AuditEventKind.EXECUTION_RUN_FINISHED,
             {"outcome": outcome},
         )
+        if outcome == "failed":
+            self._emit_notification(
+                run,
+                kind="run_failed",
+                title="Execution Run Failed",
+                body=f"Run outcome: failed" + (f" — {error}" if error else ""),
+                entity_kind="execution_run",
+                entity_id=run.id,
+                metadata={"error": error} if error else None,
+            )
 
     def ingest_and_extract(
         self,
@@ -235,6 +254,16 @@ class WalletWorkflow:
         source.status = SourceMessageStatus.CONSUMED
         self._advance_cursor(source)
         self.session.flush()
+        if candidates:
+            self._emit_notification(
+                run,
+                kind="review_pending",
+                title="Review Pending",
+                body=f"{len(candidates)} transaction(s) need review",
+                entity_kind="source_message",
+                entity_id=source.id,
+                metadata={"candidate_count": len(candidates)},
+            )
         return source, tuple(candidates), tuple(tasks)
 
     def _record_statement(
@@ -545,6 +574,15 @@ class WalletWorkflow:
             AuditEventKind.STATEMENT_BATCH_DECIDED,
             {"decision": "approved", "financial_event_count": len(events)},
         )
+        self._emit_notification(
+            run,
+            kind="batch_approved",
+            title="Statement Batch Approved",
+            body=f"{len(events)} financial event(s) created",
+            entity_kind="statement_review_batch",
+            entity_id=batch.id,
+            metadata={"financial_event_count": len(events)},
+        )
         return tuple(events)
 
     def _add_reconciliation_link(
@@ -733,6 +771,14 @@ class WalletWorkflow:
                 AuditEventKind.IMPORT_COMMAND_TRANSITION,
                 {"mode": "dry_run", "intent": "wallet_submit", "submitted": False},
             )
+            self._emit_notification(
+                run,
+                kind="import_complete",
+                title="Import Complete (dry-run)",
+                body=f"Import command {command.id} status: {command.status.value} (dry-run)",
+                entity_kind="import_command",
+                entity_id=command.id,
+            )
             return command
         if run.mode == IntegrationMode.DISABLED:
             raise WorkflowError("disabled runs cannot submit Wallet imports")
@@ -770,6 +816,15 @@ class WalletWorkflow:
             command.id,
             AuditEventKind.IMPORT_COMMAND_TRANSITION,
             {"mode": "live", "wallet_attempt_status": result.status.value},
+        )
+
+        self._emit_notification(
+            run,
+            kind="import_complete",
+            title="Import Complete",
+            body=f"Import command {command.id} status: {command.status.value}",
+            entity_kind="import_command",
+            entity_id=command.id,
         )
         return command
 
@@ -902,4 +957,35 @@ class WalletWorkflow:
                 payload=payload,
                 occurred_at=self.now(),
             )
+        )
+
+    def _emit_notification(
+        self,
+        run: ExecutionRun,
+        *,
+        kind: str,
+        title: str,
+        body: str,
+        entity_kind: str,
+        entity_id: object,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        intent = NotificationIntent(
+            idempotency_key=_digest(f"notification:{kind}:{entity_id}"),
+            kind=kind,
+            title=title,
+            body=body,
+            entity_kind=entity_kind,
+            entity_id=str(entity_id),
+            metadata=metadata or {},
+        )
+        record = self._outbox.enqueue(intent)
+        if record is None:
+            return
+        self._audit(
+            run,
+            "notification_outbox",
+            entity_id,
+            AuditEventKind.NOTIFICATION_ENQUEUED,
+            {"intent_kind": kind, "idempotency_key": intent.idempotency_key},
         )

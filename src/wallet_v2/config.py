@@ -37,6 +37,7 @@ __all__ = [
     "DatabaseSettings",
     "LlmSettings",
     "MailboxSettings",
+    "PushSettings",
     "Settings",
     "WalletSettings",
     "load_settings",
@@ -255,6 +256,39 @@ class WalletSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class PushSettings:
+    """Push notification delivery settings. Disabled by default.
+
+    Push delivery requires VAPID keys and a FCM project ID, all of which are
+    optional until the deployment provisions credentials. The provider stub
+    raises on every send attempt when mode is ``disabled``, preserving the
+    fail-closed contract.
+
+    The ``public_key`` is exposed to the frontend via the configuration
+    endpoint; it is not a secret.
+    """
+
+    mode: IntegrationMode = IntegrationMode.DISABLED
+    public_key: str | None = None
+    private_key: str | None = None  # secret
+    subject: str | None = None
+    fcm_project_id: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != IntegrationMode.DISABLED
+
+    def __repr__(self) -> str:
+        return (
+            f"PushSettings(mode={self.mode!r}, "
+            f"public_key={self.public_key!r}, "
+            f"private_key={_secret_repr(self.private_key)}, "
+            f"subject={self.subject!r}, "
+            f"fcm_project_id={self.fcm_project_id!r})"
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class Settings:
     """Root settings for Wallet V2."""
 
@@ -263,12 +297,14 @@ class Settings:
     mailbox: MailboxSettings = field(default_factory=lambda: MailboxSettings())
     llm: LlmSettings = field(default_factory=lambda: LlmSettings())
     wallet: WalletSettings = field(default_factory=lambda: WalletSettings())
+    push: PushSettings = field(default_factory=lambda: PushSettings())
 
     def __repr__(self) -> str:
         return (
             f"Settings(environment={self.environment!r}, "
             f"database={self.database!r}, mailbox={self.mailbox!r}, "
-            f"llm={self.llm!r}, wallet={self.wallet!r})"
+            f"llm={self.llm!r}, wallet={self.wallet!r}, "
+            f"push={self.push!r})"
         )
 
     def with_overrides(self, **changes: object) -> "Settings":
@@ -393,6 +429,33 @@ def _build_wallet(env: Mapping[str, str]) -> WalletSettings:
     )
 
 
+def _build_push(env: Mapping[str, str]) -> PushSettings:
+    mode = _parse_mode(env, f"{ENV_PREFIX}PUSH__MODE")
+    public_key = _get(env, f"{ENV_PREFIX}PUSH__PUBLIC_KEY")
+    private_key = _get(env, f"{ENV_PREFIX}PUSH__PRIVATE_KEY")
+    subject = _get(env, f"{ENV_PREFIX}PUSH__SUBJECT")
+    fcm_project_id = _get(env, f"{ENV_PREFIX}PUSH__FCM_PROJECT_ID")
+    if mode != IntegrationMode.DISABLED:
+        missing: list[str] = []
+        if not public_key:
+            missing.append("PUSH__PUBLIC_KEY")
+        if not private_key:
+            missing.append("PUSH__PRIVATE_KEY")
+        if not subject:
+            missing.append("PUSH__SUBJECT")
+        if missing:
+            raise ConfigError(
+                f"push mode={mode.value} but missing: " + ", ".join(missing)
+            )
+    return PushSettings(
+        mode=mode,
+        public_key=public_key,
+        private_key=private_key,
+        subject=subject,
+        fcm_project_id=fcm_project_id,
+    )
+
+
 def _build_settings(env: Mapping[str, str]) -> Settings:
     environment = _require(env, f"{ENV_PREFIX}ENVIRONMENT").lower()
     if environment not in {"dev", "staging", "prod"}:
@@ -406,6 +469,7 @@ def _build_settings(env: Mapping[str, str]) -> Settings:
         mailbox=_build_mailbox(env),
         llm=_build_llm(env),
         wallet=_build_wallet(env),
+        push=_build_push(env),
     )
 
 

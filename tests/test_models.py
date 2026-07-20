@@ -189,6 +189,8 @@ class TestTableRegistry:
             "reconciliation_links",
             "statement_review_batches",
             "financial_events",
+            "push_subscriptions",
+            "notification_outbox",
         }
         assert set(Base.metadata.tables.keys()) == expected
 

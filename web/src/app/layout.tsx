@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { PushInitScript } from "./push-init";
 
 export const metadata: Metadata = {
   title: "Wallet V2 Reconciliation",
@@ -38,6 +39,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ServiceWorkerRegistration />
+        <PushInitScript />
         <header>
           <div className="container">
             <h1>Wallet V2</h1>
