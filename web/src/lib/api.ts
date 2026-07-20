@@ -1,0 +1,161 @@
+const API_BASE = "/api";
+
+export interface BatchSummary {
+  batch_id: string;
+  statement_id: string;
+  account_issuer: string | null;
+  account_reference: string | null;
+  statement_currency: string | null;
+  statement_date: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  line_count: number;
+  line_resolved_count: number;
+  ambiguous_count: number;
+  state: string;
+  created_at: string;
+}
+
+export interface BatchDetail {
+  batch_id: string;
+  statement_id: string;
+  state: string;
+  statement_status: string;
+  statement_currency: string | null;
+  statement_date: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  opening_balance_minor: number | null;
+  closing_balance_minor: number | null;
+  account: FinancialAccountView | null;
+  lines: StatementLineView[];
+  reviewer_id: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+}
+
+export interface FinancialAccountView {
+  account_id: string;
+  issuer: string;
+  external_reference: string;
+  wallet_account_reference: string | null;
+}
+
+export interface StatementLineView {
+  line_id: string;
+  line_index: number;
+  direction: string;
+  amount_minor: number;
+  currency: string;
+  merchant: string | null;
+  external_reference: string | null;
+  description: string | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+  running_balance_minor: number | null;
+  event_status: string;
+  event_id: string | null;
+  reconciliation: ReconciliationLinkView | null;
+  observation: ObservationView | null;
+  eligible_observations: ObservationView[];
+}
+
+export interface ReconciliationLinkView {
+  outcome: string;
+  method: string;
+  confidence: number | null;
+  note: string | null;
+}
+
+export interface ObservationView {
+  observation_id: string;
+  source_merchant: string | null;
+  source_reference: string | null;
+  status: string;
+  amount_minor: number;
+  currency: string;
+  direction: string;
+  transaction_date: string | null;
+}
+
+export interface FinancialEventView {
+  event_id: string;
+  direction: string;
+  amount_minor: number;
+  currency: string;
+  merchant: string | null;
+  reference: string | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+  event_status: string;
+}
+
+async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail || res.statusText);
+  }
+  return res.json();
+}
+
+export async function listBatches(): Promise<{ batches: BatchSummary[] }> {
+  return fetchJSON("/batches");
+}
+
+export async function getBatchDetail(
+  batchId: string
+): Promise<BatchDetail> {
+  return fetchJSON(`/batches/${batchId}`);
+}
+
+export async function resolveLine(
+  lineId: string,
+  body: { outcome: string; observation_id?: string; note?: string }
+): Promise<{
+  link_id: string;
+  outcome: string;
+  method: string;
+  note: string | null;
+}> {
+  return fetchJSON(`/commands/resolve-line/${lineId}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function mapAccount(
+  accountId: string,
+  body: { wallet_account_reference: string }
+): Promise<{ account_id: string; wallet_account_reference: string }> {
+  return fetchJSON(`/commands/map-account/${accountId}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function approveBatch(
+  batchId: string,
+  body: { reviewer_id: string; note?: string }
+): Promise<{
+  batch_id: string;
+  event_count: number;
+  events: FinancialEventView[];
+}> {
+  return fetchJSON(`/commands/approve-batch/${batchId}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function dryRunImport(
+  eventId: string
+): Promise<{ command_id: string; event_id: string; status: string; issued_at: string }> {
+  return fetchJSON(`/commands/dry-run-import/${eventId}`, {
+    method: "POST",
+  });
+}

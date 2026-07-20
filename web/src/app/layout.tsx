@@ -1,0 +1,50 @@
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Wallet V2 Reconciliation",
+  description: "Statement reconciliation console",
+  manifest: "/manifest.json",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#2563eb",
+};
+
+function ServiceWorkerRegistration() {
+  return (
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+`,
+      }}
+    />
+  );
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <ServiceWorkerRegistration />
+        <header>
+          <div className="container">
+            <h1>Wallet V2</h1>
+          </div>
+        </header>
+        <main className="container">{children}</main>
+      </body>
+    </html>
+  );
+}

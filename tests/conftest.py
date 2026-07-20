@@ -24,9 +24,8 @@ from wallet_v2.persistence.models import *  # noqa: F401,F403 - register all
 def sqlite_engine() -> Iterator[Engine]:
     """An in-memory SQLite engine with all V2 tables created.
 
-    SQLite does not enforce ``CHECK`` constraints by default; we enable
-    foreign keys and check enforcement so the constraint tests are
-    meaningful. JSONB falls back to TEXT under SQLite via SQLAlchemy's
+    We explicitly enable foreign keys and ensure check constraints are not
+    disabled, so the constraint tests are meaningful. JSONB falls back to TEXT under SQLite via SQLAlchemy's
     dialect handling, so JSON columns round-trip as Python dicts.
     """
 
@@ -36,12 +35,13 @@ def sqlite_engine() -> Iterator[Engine]:
         future=True,
     )
     # SQLite needs PRAGMA foreign_keys=ON to honour FK constraints.
-    from sqlalchemy import event, text
+    from sqlalchemy import event
 
     @event.listens_for(engine, "connect")
-    def _enable_fk(dbapi_conn: Any, _records: Any) -> None:
+    def _enable_pragmas(dbapi_conn: Any, _records: Any) -> None:
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA ignore_check_constraints=OFF")
         cursor.close()
 
     Base.metadata.create_all(engine)

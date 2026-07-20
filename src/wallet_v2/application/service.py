@@ -717,6 +717,7 @@ class WalletWorkflow:
                 execution_run_id=run.id,
                 financial_event_id=event.id,
                 idempotency_key=_digest(f"wallet-import:event:{event.id}"),
+                status=ImportCommandStatus.QUEUED,
                 payload=payload,
                 issued_at=self.now(),
             )

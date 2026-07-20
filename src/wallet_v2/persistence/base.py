@@ -4,10 +4,14 @@ Two mixins encode the project's cross-cutting invariants:
 
 * :class:`Timestamped` adds ``created_at`` and ``updated_at`` columns. Use
   this for tables whose rows may be updated (e.g. ``candidates``,
-  ``inboxes``).
+  ``inboxes``, ``import_commands``).  :class:`ImportCommand` is
+  intentionally mutable — its ``status`` column advances through the
+  queued→in_flight→succeeded/failed/unknown→reconciled state machine
+  while ``payload``, ``idempotency_key``, and ``issued_at`` are immutable
+  in practice (enforced at the application layer, not the schema).
 * :class:`Immutable` adds only ``created_at``. Use this for append-only
-  tables (:class:`ProcessingAttempt`, :class:`ImportCommand`,
-  :class:`WalletAttempt`, :class:`ReviewDecision`, :class:`AuditEvent`).
+  tables (:class:`ProcessingAttempt`, :class:`WalletAttempt`,
+  :class:`ReviewDecision`, :class:`AuditEvent`).
   The absence of ``updated_at`` is a schema-level signal of the
   immutability invariant called out in the DeepSeek V4 review (section 9.2).
 """

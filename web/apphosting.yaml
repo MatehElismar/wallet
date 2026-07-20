@@ -1,0 +1,21 @@
+# Firebase App Hosting configuration for the Wallet V2 reconciliation console.
+#
+# This file belongs in the Next.js application root: configure the App Hosting
+# backend with `web/` as its root directory. The Python API is deployed to a
+# separate, IAM-protected Cloud Run service.
+
+runConfig:
+  minInstances: 0
+  maxInstances: 1
+  # App Hosting requires concurrency 1 when CPU is less than one.
+  concurrency: 1
+  cpu: 0.5
+  memoryMiB: 512
+
+env:
+  # This server-only URL is intentionally kept out of browser bundles. Create
+  # the referenced App Hosting secret before the first rollout.
+  - variable: WALLET_V2_API_URL
+    secret: walletV2ApiUrl
+    availability:
+      - RUNTIME

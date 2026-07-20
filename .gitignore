@@ -12,6 +12,14 @@ htmlcov/
 !.env.example
 *.sql
 
+# Web (Next.js) build output
+web/node_modules/
+web/.next/
+web/out/
+
+# Firebase CLI local configuration
+.firebaserc
+
 # Local editor/OS files
 .DS_Store
 .idea/
