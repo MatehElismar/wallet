@@ -48,10 +48,12 @@ class TestDefaultDisabled:
         assert s.mailbox.mode is IntegrationMode.DISABLED
         assert s.llm.mode is IntegrationMode.DISABLED
         assert s.wallet.mode is IntegrationMode.DISABLED
+        assert s.mcp.mode is IntegrationMode.DISABLED
         # enabled convenience property agrees with mode != disabled.
         assert s.mailbox.enabled is False
         assert s.llm.enabled is False
         assert s.wallet.enabled is False
+        assert s.mcp.enabled is False
 
     def test_disabled_requires_no_credentials(self) -> None:
         # No mailbox/llm/wallet credentials supplied; disabled mode loads
@@ -214,6 +216,85 @@ class TestLlmFailClosed:
         )
         with pytest.raises(ConfigError):
             load_settings(env)
+
+
+class TestMcpFailClosed:
+    @pytest.mark.parametrize("mode", ["dry_run", "live"])
+    def test_non_disabled_without_base_url_raises(self, mode: str) -> None:
+        env = _env(
+            **{
+                "WALLET_V2__MCP__MODE": mode,
+                "WALLET_V2__MCP__API_KEY": "k",
+            }
+        )
+        with pytest.raises(ConfigError):
+            load_settings(env)
+
+    @pytest.mark.parametrize("mode", ["dry_run", "live"])
+    def test_non_disabled_without_api_key_raises(self, mode: str) -> None:
+        env = _env(
+            **{
+                "WALLET_V2__MCP__MODE": mode,
+                "WALLET_V2__MCP__BASE_URL": "https://mcp.example.com",
+            }
+        )
+        with pytest.raises(ConfigError):
+            load_settings(env)
+
+    def test_live_non_http_url_raises(self) -> None:
+        env = _env(
+            **{
+                "WALLET_V2__MCP__MODE": "live",
+                "WALLET_V2__MCP__BASE_URL": "ftp://mcp.example.com",
+                "WALLET_V2__MCP__API_KEY": "k",
+            }
+        )
+        with pytest.raises(ConfigError):
+            load_settings(env)
+
+    def test_disabled_requires_no_credentials(self) -> None:
+        s = load_settings(_env())
+        assert s.mcp.mode is IntegrationMode.DISABLED
+        assert s.mcp.base_url is None
+        assert s.mcp.api_key is None
+
+    def test_live_full_loads(self) -> None:
+        env = _env(
+            **{
+                "WALLET_V2__MCP__MODE": "live",
+                "WALLET_V2__MCP__BASE_URL": "https://mcp.example.com",
+                "WALLET_V2__MCP__API_KEY": "k",
+            }
+        )
+        s = load_settings(env)
+        assert s.mcp.mode is IntegrationMode.LIVE
+        assert s.mcp.enabled is True
+        assert s.mcp.base_url == "https://mcp.example.com"
+
+    def test_dry_run_full_loads(self) -> None:
+        env = _env(
+            **{
+                "WALLET_V2__MCP__MODE": "dry_run",
+                "WALLET_V2__MCP__BASE_URL": "https://mcp.example.com",
+                "WALLET_V2__MCP__API_KEY": "k",
+            }
+        )
+        s = load_settings(env)
+        assert s.mcp.mode is IntegrationMode.DRY_RUN
+        assert s.mcp.enabled is True
+
+    def test_api_key_redacted_in_repr(self) -> None:
+        env = _env(
+            **{
+                "WALLET_V2__MCP__MODE": "live",
+                "WALLET_V2__MCP__BASE_URL": "https://mcp.example.com",
+                "WALLET_V2__MCP__API_KEY": "super-secret-mcp-key",
+            }
+        )
+        s = load_settings(env)
+        repr_text = repr(s)
+        assert "super-secret-mcp-key" not in repr_text
+        assert "<redacted>" in repr_text
 
 
 class TestWalletFailClosed:

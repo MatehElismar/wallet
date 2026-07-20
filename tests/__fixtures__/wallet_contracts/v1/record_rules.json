@@ -1,0 +1,50 @@
+{
+  "limit": 30,
+  "offset": 0,
+  "recordRules": [
+    {
+      "id": "rule_01",
+      "name": "Uber rides",
+      "keywords": ["UBER"],
+      "category": {
+        "id": "cat_03",
+        "name": "Transport",
+        "color": "#2196F3",
+        "archived": false
+      },
+      "labels": [
+        {
+          "id": "lbl_02",
+          "name": "Business",
+          "color": "#3F51B5",
+          "archived": false
+        }
+      ],
+      "fromAccountId": null,
+      "toAccountId": null
+    },
+    {
+      "id": "rule_02",
+      "name": "Grocery shopping",
+      "keywords": ["WALMART", "GROCERY"],
+      "category": {
+        "id": "cat_01",
+        "name": "Groceries",
+        "color": "#4CAF50",
+        "archived": false
+      },
+      "labels": [],
+      "fromAccountId": null,
+      "toAccountId": null
+    },
+    {
+      "id": "rule_03",
+      "name": null,
+      "keywords": [],
+      "category": null,
+      "labels": [],
+      "fromAccountId": null,
+      "toAccountId": "acct_02"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": "test-req-profile-bad",
+  "result": {
+    "structuredContent": {
+      "syncState": "incomplete",
+      "grantedScopes": ["accounts.read"],
+      "_meta": {
+        "syncedAt": null,
+        "rateLimit": {
+          "remaining": 300,
+          "capacity": 300,
+          "refillPerMinute": 60
+        }
+      }
+    }
+  }
+}

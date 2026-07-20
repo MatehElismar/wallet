@@ -1,0 +1,25 @@
+{
+  "jsonrpc": "2.0",
+  "id": "test-req-agg-01",
+  "result": {
+    "structuredContent": {
+      "results": [
+        {"key": "cat_mcp_01", "value": -42.30, "count": 1},
+        {"key": "cat_mcp_02", "value": -150.00, "count": 3},
+        {"key": "cat_mcp_03", "value": -200.00, "count": 2}
+      ],
+      "limit": 200,
+      "offset": 0,
+      "baseCurrency": "USD",
+      "transfersIncluded": false,
+      "_meta": {
+        "syncedAt": "2026-07-19T10:00:00Z",
+        "rateLimit": {
+          "remaining": 298,
+          "capacity": 300,
+          "refillPerMinute": 60
+        }
+      }
+    }
+  }
+}

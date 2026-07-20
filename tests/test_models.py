@@ -56,10 +56,12 @@ _IMMUTABLE_TABLES = (
     "bank_statement_lines",
     "transaction_observations",
     "financial_events",
+    "catalog_sync_snapshots",
 )
 
 
 _TIMESTAMPED_TABLES = (
+    "account_mappings",
     "inboxes",
     "source_messages",
     "message_content_metadata",
@@ -70,6 +72,7 @@ _TIMESTAMPED_TABLES = (
     "bank_statements",
     "reconciliation_links",
     "statement_review_batches",
+    "catalog_sync_cursors",
 )
 
 
@@ -169,8 +172,12 @@ class TestTableRegistry:
         from wallet_v2.persistence.base import Base
 
         expected = {
+            "account_mappings",
+            "advisory_research",
+            "enrichment_decisions",
             "inboxes",
             "inbox_cursor_history",
+            "mcp_profile_snapshots",
             "source_messages",
             "message_content_metadata",
             "processing_attempts",
@@ -191,6 +198,8 @@ class TestTableRegistry:
             "financial_events",
             "push_subscriptions",
             "notification_outbox",
+            "catalog_sync_cursors",
+            "catalog_sync_snapshots",
         }
         assert set(Base.metadata.tables.keys()) == expected
 

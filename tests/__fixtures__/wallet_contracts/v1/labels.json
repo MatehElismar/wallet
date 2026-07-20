@@ -1,0 +1,30 @@
+{
+  "limit": 30,
+  "offset": 0,
+  "labels": [
+    {
+      "id": "lbl_01",
+      "name": "Tax Deductible",
+      "color": "#E91E63",
+      "archived": false
+    },
+    {
+      "id": "lbl_02",
+      "name": "Business",
+      "color": "#3F51B5",
+      "archived": false
+    },
+    {
+      "id": "lbl_03",
+      "name": "Personal",
+      "color": "#00BCD4",
+      "archived": false
+    },
+    {
+      "id": "lbl_04",
+      "name": "Reimbursable",
+      "color": "#FFC107",
+      "archived": false
+    }
+  ]
+}

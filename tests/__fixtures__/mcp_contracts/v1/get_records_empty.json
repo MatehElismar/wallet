@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": "test-req-records-empty",
+  "result": {
+    "structuredContent": {
+      "records": [],
+      "total": 0,
+      "limit": 200,
+      "offset": 0,
+      "nextOffset": null,
+      "_meta": {
+        "syncedAt": "2026-07-19T10:00:00Z",
+        "rateLimit": {
+          "remaining": 299,
+          "capacity": 300,
+          "refillPerMinute": 60
+        }
+      }
+    }
+  }
+}

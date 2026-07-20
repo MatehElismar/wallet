@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": "test-req-profile-01",
+  "result": {
+    "structuredContent": {
+      "syncState": "complete",
+      "grantedScopes": [
+        "accounts.read",
+        "records.read",
+        "categories.read",
+        "labels.read",
+        "record_rules.read",
+        "budgets.read"
+      ],
+      "profile": {
+        "userId": "usr_redacted_01",
+        "plan": "premium",
+        "currency": "USD"
+      },
+      "_meta": {
+        "syncedAt": "2026-07-19T10:00:00Z",
+        "rateLimit": {
+          "remaining": 300,
+          "capacity": 300,
+          "refillPerMinute": 60
+        }
+      }
+    }
+  }
+}

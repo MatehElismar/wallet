@@ -1,0 +1,107 @@
+{
+  "limit": 30,
+  "offset": 0,
+  "records": [
+    {
+      "id": "rec_01",
+      "accountId": "acct_01",
+      "amount": {
+        "value": -42.3,
+        "currencyCode": "USD"
+      },
+      "category": {
+        "id": "cat_01",
+        "name": "Groceries",
+        "color": "#4CAF50",
+        "archived": false
+      },
+      "counterParty": "GROCERY MART",
+      "recordDate": "2025-07-15",
+      "labels": [
+        {
+          "id": "lbl_03",
+          "name": "Personal",
+          "color": "#00BCD4",
+          "archived": false
+        }
+      ],
+      "paymentType": "debit_card",
+      "recordType": "expense",
+      "recordState": "cleared",
+      "transfer": null
+    },
+    {
+      "id": "rec_02",
+      "accountId": "acct_01",
+      "amount": {
+        "value": -15.5,
+        "currencyCode": "USD"
+      },
+      "category": {
+        "id": "cat_03",
+        "name": "Transport",
+        "color": "#2196F3",
+        "archived": false
+      },
+      "counterParty": "UBER TRIP",
+      "recordDate": "2025-07-14",
+      "labels": [],
+      "paymentType": "debit_card",
+      "recordType": "expense",
+      "recordState": "cleared",
+      "transfer": null
+    },
+    {
+      "id": "rec_03",
+      "accountId": "acct_01",
+      "amount": {
+        "value": 5000.0,
+        "currencyCode": "USD"
+      },
+      "category": {
+        "id": "cat_04",
+        "name": "Salary",
+        "color": "#8BC34A",
+        "archived": false
+      },
+      "counterParty": "EMPLOYER INC",
+      "recordDate": "2025-07-01",
+      "labels": [],
+      "paymentType": "transfer",
+      "recordType": "income",
+      "recordState": "cleared",
+      "transfer": null
+    },
+    {
+      "id": "rec_04",
+      "accountId": "acct_01",
+      "amount": {
+        "value": -1000.0,
+        "currencyCode": "USD"
+      },
+      "category": {
+        "id": "cat_05",
+        "name": "Transfer",
+        "color": "#9C27B0",
+        "archived": false
+      },
+      "counterParty": null,
+      "recordDate": "2025-07-01",
+      "labels": [],
+      "paymentType": "transfer",
+      "recordType": "transfer",
+      "recordState": "cleared",
+      "transfer": {
+        "type": "internal",
+        "mirrorRecord": {
+          "id": "rec_mirror_01",
+          "accountId": "acct_02",
+          "amount": {
+            "value": 1000.0,
+            "currencyCode": "USD"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -8,9 +8,12 @@ import sys
 import uuid
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import Engine, select
 
 from wallet_v2.adapters import ImapMailboxReader, OpenAICompatibleExtractor
+from wallet_v2.adapters.wallet_api import BudgetBakersWalletClient
+from wallet_v2.application.account_repair import AccountRepairService
+from wallet_v2.application.catalog_sync import CatalogSyncService, CatalogReader
 from wallet_v2.application.service import WalletWorkflow
 from wallet_v2.config import ConfigError, load_settings
 from wallet_v2.domain.enums import IntegrationMode
@@ -61,6 +64,24 @@ def _parser() -> argparse.ArgumentParser:
     runs_subcommands = runs.add_subparsers(dest="runs_command", required=True)
     show = runs_subcommands.add_parser("show", help="show one execution run")
     show.add_argument("run_id")
+
+    subcommands.add_parser("sync-catalog", help="sync Wallet catalog resources to versioned local snapshots")
+
+    repair = subcommands.add_parser("repair-qik", help="merge duplicate Qik FinancialAccounts and map to a Wallet account")
+    repair.add_argument(
+        "--raw-references", nargs="+", required=True,
+        help="one or more raw external references that share a canonical form (e.g. *2197 ************2197)",
+    )
+    repair.add_argument(
+        "--wallet-account-id",
+        required=True,
+        help="Wallet account ID to map the surviving FinancialAccount to",
+    )
+    repair.add_argument(
+        "--issuer",
+        required=True,
+        help="exact issuer name recorded on the local FinancialAccount rows",
+    )
     return parser
 
 
@@ -236,11 +257,81 @@ def _show_run(args: argparse.Namespace) -> int:
         engine.dispose()
 
 
+def _sync_catalog(
+    args: argparse.Namespace,
+    *,
+    _settings: Settings | None = None,
+    _client: CatalogReader | None = None,
+    _engine: Engine | None = None,
+) -> int:
+    settings = _settings or load_settings()
+    if settings.wallet.mode is IntegrationMode.DISABLED:
+        raise ConfigError("WALLET__MODE must not be disabled for catalog sync")
+    engine = _engine or create_engine_from_settings(settings)
+    factory = create_session_factory(engine)
+    try:
+        client = _client or BudgetBakersWalletClient(
+            base_url=settings.wallet.base_url or "",
+            api_key=settings.wallet.api_key or "",
+            timeout_seconds=settings.wallet.timeout_seconds,
+        )
+        with session_scope(factory) as session:
+            service = CatalogSyncService(session=session, reader=client)
+            snapshots = service.sync_all()
+            result = {
+                "mode": settings.wallet.mode.value,
+                "provider_revision": client.last_revision(),
+                "snapshots": {
+                    kind: {
+                        "snapshot_id": str(snap.id),
+                        "snapshot_version": snap.snapshot_version,
+                        "item_count": snap.catalog_data["item_count"],
+                    }
+                    for kind, snap in snapshots.items()
+                },
+            }
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    finally:
+        engine.dispose()
+
+
+def _repair_qik(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    engine = create_engine_from_settings(settings)
+    factory = create_session_factory(engine)
+    try:
+        with session_scope(factory) as session:
+            svc = AccountRepairService(session)
+            result = svc.repair_qik_account(
+                raw_references=args.raw_references,
+                wallet_account_id=args.wallet_account_id,
+                issuer=args.issuer,
+            )
+            output = {
+                "survivor_account_id": result.survivor_account_id,
+                "merged_account_ids": result.merged_account_ids,
+                "reassigned": result.reassigned,
+                "mapping_account_id": result.mapping_account_id,
+                "mapping_remote_id": result.mapping_remote_id,
+            }
+            if result.warnings:
+                output["warnings"] = result.warnings
+            print(json.dumps(output, sort_keys=True))
+        return 0
+    finally:
+        engine.dispose()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "run":
             return _run(args)
+        if args.command == "sync-catalog":
+            return _sync_catalog(args)
+        if args.command == "repair-qik":
+            return _repair_qik(args)
         return _show_run(args)
     except (ConfigError, ValueError, RuntimeError) as exc:
         print(f"wallet-v2: {exc}", file=sys.stderr)

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from wallet_v2.api.app import create_test_app
-from wallet_v2.application import WalletWorkflow
+from wallet_v2.application import AccountMappingService, WalletWorkflow
 from wallet_v2.domain.enums import (
     AuditEventKind,
     IntegrationMode,
@@ -19,6 +19,8 @@ from wallet_v2.domain.enums import (
 from wallet_v2.persistence.base import Base
 from wallet_v2.persistence.models import (
     AuditEvent,
+    CatalogSyncCursor,
+    CatalogSyncSnapshot,
     ExecutionRun,
     StatementReviewBatch,
 )
@@ -827,9 +829,32 @@ class TestDryRunImport:
                 run=run, line=line,
                 outcome=ReconciliationOutcome.NEW,
             )
-            workflow.map_financial_account(
-                run=run, account=batch.statement.account,
-                wallet_account_reference="wallet-dry-1",
+            snap = CatalogSyncSnapshot(
+                resource_kind="accounts",
+                snapshot_version=1,
+                catalog_data={
+                    "version": 1,
+                    "resource_kind": "accounts",
+                    "snapshot_version": 1,
+                    "item_count": 1,
+                    "items": [{"id": "wallet-dry-1", "name": "Dry", "archived": False}],
+                },
+            )
+            session.add(snap)
+            session.flush()
+            session.add(
+                CatalogSyncCursor(
+                    resource_kind="accounts",
+                    current_snapshot=snap,
+                    last_synced_at=_now(),
+                )
+            )
+            session.flush()
+            mapping_svc = AccountMappingService(session)
+            mapping_svc.create_mapping(
+                financial_account_id=batch.statement.account.id,
+                remote_account_id="wallet-dry-1",
+                snapshot_id=snap.id,
             )
             events = workflow.approve_statement_batch(
                 run=run, batch=batch, reviewer_id="operator",
@@ -1284,9 +1309,32 @@ class TestDryRunEventId:
                 run=run, line=line,
                 outcome=ReconciliationOutcome.NEW,
             )
-            workflow.map_financial_account(
-                run=run, account=batch.statement.account,
-                wallet_account_reference="w-evtid-1",
+            snap = CatalogSyncSnapshot(
+                resource_kind="accounts",
+                snapshot_version=1,
+                catalog_data={
+                    "version": 1,
+                    "resource_kind": "accounts",
+                    "snapshot_version": 1,
+                    "item_count": 1,
+                    "items": [{"id": "w-evtid-1", "name": "EvtId", "archived": False}],
+                },
+            )
+            session.add(snap)
+            session.flush()
+            session.add(
+                CatalogSyncCursor(
+                    resource_kind="accounts",
+                    current_snapshot=snap,
+                    last_synced_at=_now(),
+                )
+            )
+            session.flush()
+            mapping_svc = AccountMappingService(session)
+            mapping_svc.create_mapping(
+                financial_account_id=batch.statement.account.id,
+                remote_account_id="w-evtid-1",
+                snapshot_id=snap.id,
             )
             events = workflow.approve_statement_batch(
                 run=run, batch=batch, reviewer_id="operator",

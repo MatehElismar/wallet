@@ -282,6 +282,26 @@ class AuditEventKind(_StrEnum):
     STATEMENT_BATCH_DECIDED = "statement_batch_decided"
     RECONCILIATION_RESOLVED = "reconciliation_resolved"
     FINANCIAL_ACCOUNT_MAPPED = "financial_account_mapped"
+    ACCOUNT_MAPPING_VALIDATED = "account_mapping_validated"
+    ACCOUNT_MAPPING_SUPERSEDED = "account_mapping_superseded"
     NOTIFICATION_ENQUEUED = "notification_enqueued"
     NOTIFICATION_DELIVERED = "notification_delivered"
     NOTIFICATION_FAILED = "notification_failed"
+    FINANCIAL_ACCOUNT_MERGED = "financial_account_merged"
+
+
+class McpProfileSyncState(_StrEnum):
+    """Sync state of an MCP client profile."""
+
+    COMPLETE = "complete"
+    INCOMPLETE = "incomplete"
+    PENDING = "pending"
+
+
+class EvidenceGrade(_StrEnum):
+    """Transparent evidence grade for MCP-enriched proposals."""
+
+    EXACT_RECURRENCE = "exact_recurrence"
+    MERCHANT_HISTORY = "merchant_history"
+    CONTEXT_ONLY = "context_only"
+    NO_RECOMMENDATION = "no_recommendation"

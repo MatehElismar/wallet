@@ -61,4 +61,4 @@ def session(sqlite_engine: Engine) -> Iterator[Session]:
 def metadata_tables() -> dict[str, Any]:
     """Return a mapping of table name -> table object from the ORM metadata."""
 
-    return dict(inspect(Base.metadata).sorted_tables)
+    return {table.name: table for table in inspect(Base.metadata).sorted_tables}

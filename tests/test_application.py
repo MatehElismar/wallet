@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from wallet_v2.application import (
+    AccountMappingService,
     ExtractedStatement,
     ExtractedTransaction,
     ExtractionResult,
@@ -28,6 +29,8 @@ from wallet_v2.domain.enums import (
 from wallet_v2.persistence.models import (
     AuditEvent,
     BankStatement,
+    CatalogSyncCursor,
+    CatalogSyncSnapshot,
     FinancialEvent,
     Inbox,
     InboxCursorHistory,
@@ -220,15 +223,40 @@ class TestControlledWorkflow:
         assert notification_candidates[0].review_task.state == "superseded"
         assert statement.status == "approved"
         assert statement.account.wallet_account_reference is None
-        with pytest.raises(WorkflowError, match="mapped"):
+        with pytest.raises(WorkflowError, match="mapp"):
             workflow.import_approved_financial_event(
                 run=run, event=events[0], wallet=None
             )
-        workflow.map_financial_account(
-            run=run,
-            account=statement.account,
-            wallet_account_reference="wallet-card-1",
+        snap = CatalogSyncSnapshot(
+            resource_kind="accounts",
+            snapshot_version=1,
+            catalog_data={
+                "version": 1,
+                "resource_kind": "accounts",
+                "snapshot_version": 1,
+                "item_count": 1,
+                "items": [
+                    {"id": "wallet-card-1", "name": "Card", "archived": False}
+                ],
+            },
         )
+        session.add(snap)
+        session.flush()
+        session.add(
+            CatalogSyncCursor(
+                resource_kind="accounts",
+                current_snapshot=snap,
+                last_synced_at=datetime.now(timezone.utc),
+            )
+        )
+        session.flush()
+        mapping_svc = AccountMappingService(session)
+        mapping_svc.create_mapping(
+            financial_account_id=statement.account.id,
+            remote_account_id="wallet-card-1",
+            snapshot_id=snap.id,
+        )
+        session.flush()
         command = workflow.import_approved_financial_event(
             run=run, event=events[0], wallet=None
         )

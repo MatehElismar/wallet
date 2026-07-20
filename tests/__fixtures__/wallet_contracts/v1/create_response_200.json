@@ -1,0 +1,20 @@
+[
+  {
+    "id": "rec_new_01",
+    "recordId": "rec_new_01",
+    "accountId": "acct_01",
+    "amount": {
+      "value": -4230,
+      "currencyCode": "USD"
+    },
+    "categoryId": "cat_01",
+    "date": "2025-07-15",
+    "note": "Weekly shop",
+    "counterparty": "GROCERY MART",
+    "labels": ["lbl_03"],
+    "paymentType": "debit_card",
+    "recordType": "expense",
+    "recordState": "cleared",
+    "transfer": null
+  }
+]

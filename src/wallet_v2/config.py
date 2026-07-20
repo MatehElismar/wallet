@@ -37,6 +37,7 @@ __all__ = [
     "DatabaseSettings",
     "LlmSettings",
     "MailboxSettings",
+    "McpSettings",
     "PushSettings",
     "Settings",
     "WalletSettings",
@@ -256,6 +257,40 @@ class WalletSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class McpSettings:
+    """Wallet MCP (advisory read-only) integration settings. Disabled by default.
+
+    ``mode`` selects whether the MCP integration is loaded and whether
+    queries may be issued. The MCP adapter is advisory and read-only by
+    design; it will never invoke write tools regardless of the credential's
+    advertised scopes. The ``enabled`` property is preserved as a
+    convenience for callers that previously checked the boolean flag.
+
+    .. important::
+       ``dry_run`` permits live read-only MCP queries (network I/O for
+       GET-like operations) but never writes. It is *not* a no-network
+       mode — the downstream Wallet submission path is what ``dry_run``
+       disables, not the MCP advisory queries themselves.
+    """
+
+    mode: IntegrationMode = IntegrationMode.DISABLED
+    base_url: str | None = None
+    api_key: str | None = None  # secret
+    timeout_seconds: float = 30.0
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != IntegrationMode.DISABLED
+
+    def __repr__(self) -> str:
+        return (
+            f"McpSettings(mode={self.mode!r}, base_url={self.base_url!r}, "
+            f"api_key={_secret_repr(self.api_key)}, "
+            f"timeout_seconds={self.timeout_seconds})"
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class PushSettings:
     """Push notification delivery settings. Disabled by default.
 
@@ -297,6 +332,7 @@ class Settings:
     mailbox: MailboxSettings = field(default_factory=lambda: MailboxSettings())
     llm: LlmSettings = field(default_factory=lambda: LlmSettings())
     wallet: WalletSettings = field(default_factory=lambda: WalletSettings())
+    mcp: McpSettings = field(default_factory=lambda: McpSettings())
     push: PushSettings = field(default_factory=lambda: PushSettings())
 
     def __repr__(self) -> str:
@@ -304,7 +340,7 @@ class Settings:
             f"Settings(environment={self.environment!r}, "
             f"database={self.database!r}, mailbox={self.mailbox!r}, "
             f"llm={self.llm!r}, wallet={self.wallet!r}, "
-            f"push={self.push!r})"
+            f"mcp={self.mcp!r}, push={self.push!r})"
         )
 
     def with_overrides(self, **changes: object) -> "Settings":
@@ -429,6 +465,33 @@ def _build_wallet(env: Mapping[str, str]) -> WalletSettings:
     )
 
 
+def _build_mcp(env: Mapping[str, str]) -> McpSettings:
+    mode = _parse_mode(env, f"{ENV_PREFIX}MCP__MODE")
+    base_url = _get(env, f"{ENV_PREFIX}MCP__BASE_URL")
+    api_key = _get(env, f"{ENV_PREFIX}MCP__API_KEY")
+    timeout = _parse_float(env, f"{ENV_PREFIX}MCP__TIMEOUT_SECONDS", default=30.0)
+    if mode != IntegrationMode.DISABLED:
+        missing: list[str] = []
+        if not base_url:
+            missing.append("MCP__BASE_URL")
+        if not api_key:
+            missing.append("MCP__API_KEY")
+        if missing:
+            raise ConfigError(
+                f"mcp mode={mode.value} but missing: " + ", ".join(missing)
+            )
+        if not base_url.startswith(("http://", "https://")):
+            raise ConfigError("MCP__BASE_URL must be an http(s) URL")
+        if timeout <= 0:
+            raise ConfigError("MCP__TIMEOUT_SECONDS must be > 0")
+    return McpSettings(
+        mode=mode,
+        base_url=base_url,
+        api_key=api_key,
+        timeout_seconds=timeout,
+    )
+
+
 def _build_push(env: Mapping[str, str]) -> PushSettings:
     mode = _parse_mode(env, f"{ENV_PREFIX}PUSH__MODE")
     public_key = _get(env, f"{ENV_PREFIX}PUSH__PUBLIC_KEY")
@@ -469,6 +532,7 @@ def _build_settings(env: Mapping[str, str]) -> Settings:
         mailbox=_build_mailbox(env),
         llm=_build_llm(env),
         wallet=_build_wallet(env),
+        mcp=_build_mcp(env),
         push=_build_push(env),
     )
 

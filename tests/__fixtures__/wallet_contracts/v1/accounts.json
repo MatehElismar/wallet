@@ -1,0 +1,56 @@
+{
+  "limit": 30,
+  "offset": 0,
+  "accounts": [
+    {
+      "id": "acct_01",
+      "name": "Chequing",
+      "archived": false,
+      "excludeFromStats": false,
+      "balance": {
+        "currencyCode": "USD",
+        "currentBalance": 12345.67
+      },
+      "initialBalance": {
+        "currencyCode": "USD",
+        "value": 0.0
+      }
+    },
+    {
+      "id": "acct_02",
+      "name": "Savings",
+      "archived": false,
+      "excludeFromStats": false,
+      "balance": {
+        "currencyCode": "USD",
+        "currentBalance": 50000.0
+      },
+      "initialBalance": {
+        "currencyCode": "USD",
+        "value": 1000.0
+      }
+    },
+    {
+      "id": "acct_03",
+      "name": "Credit Card",
+      "archived": false,
+      "excludeFromStats": false,
+      "balance": {
+        "currencyCode": "USD",
+        "currentBalance": -2500.0
+      },
+      "initialBalance": null
+    },
+    {
+      "id": "acct_04",
+      "name": "Old Account",
+      "archived": true,
+      "excludeFromStats": true,
+      "balance": {
+        "currencyCode": "EUR",
+        "currentBalance": 0.0
+      },
+      "initialBalance": null
+    }
+  ]
+}

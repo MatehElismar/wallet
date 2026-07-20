@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "amount.value is required",
+    "details": [
+      {
+        "field": "amount.value",
+        "message": "must be a non-zero integer"
+      }
+    ]
+  }
+}

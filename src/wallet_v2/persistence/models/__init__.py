@@ -13,6 +13,7 @@ from wallet_v2.persistence.models.import_command import ImportCommand
 from wallet_v2.persistence.models.inbox import Inbox, InboxCursorHistory
 from wallet_v2.persistence.models.review import ReviewDecisionRecord, ReviewTask
 from wallet_v2.persistence.models.reconciliation import (
+    AccountMapping,
     BankStatement,
     BankStatementLine,
     FinancialAccount,
@@ -28,8 +29,19 @@ from wallet_v2.persistence.models.source_message import (
     SourceMessage,
 )
 from wallet_v2.persistence.models.wallet import WalletAttempt, WalletReceipt
+from wallet_v2.persistence.models.mcp import (
+    AdvisoryResearch,
+    EnrichmentDecision,
+    McpProfileSnapshot,
+)
+from wallet_v2.persistence.models.wallet_catalog import (
+    CatalogSyncCursor,
+    CatalogSyncSnapshot,
+)
 
 __all__ = [
+    "AccountMapping",
+    "AdvisoryResearch",
     "Inbox",
     "InboxCursorHistory",
     "SourceMessage",
@@ -50,6 +62,10 @@ __all__ = [
     "ReconciliationLink",
     "StatementReviewBatch",
     "FinancialEvent",
+    "McpProfileSnapshot",
+    "EnrichmentDecision",
     "PushSubscription",
     "NotificationOutbox",
+    "CatalogSyncCursor",
+    "CatalogSyncSnapshot",
 ]

@@ -9,6 +9,8 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from wallet_v2.application.account_mapping import AccountMappingService
+from wallet_v2.application.account_repair import AccountRepairService
 from wallet_v2.application.contracts import (
     ExtractionResult,
     MailboxMessage,
@@ -17,6 +19,7 @@ from wallet_v2.application.contracts import (
 )
 from wallet_v2.application.outbox import OutboxService
 from wallet_v2.domain.notifications import NotificationIntent
+from wallet_v2.domain.reference import canonical_external_reference
 from wallet_v2.domain.enums import (
     AttemptStatus,
     AuditEventKind,
@@ -365,16 +368,17 @@ class WalletWorkflow:
     ) -> FinancialAccount:
         if not issuer or not external_reference:
             raise WorkflowError("bank account identity requires issuer and account reference")
+        canonical_ref = canonical_external_reference(issuer, external_reference)
         account = self.session.scalar(
             select(FinancialAccount).where(
                 FinancialAccount.issuer == issuer,
-                FinancialAccount.external_reference == external_reference,
+                FinancialAccount.external_reference == canonical_ref,
             )
         )
         if account is None:
             account = FinancialAccount(
                 issuer=issuer,
-                external_reference=external_reference,
+                external_reference=canonical_ref,
             )
             self.session.add(account)
             self.session.flush()
@@ -737,8 +741,10 @@ class WalletWorkflow:
         statement = event.statement_line.statement
         if statement.status != StatementStatus.APPROVED:
             raise WorkflowError("only an approved statement event may be imported")
-        if event.account.wallet_account_reference is None:
-            raise WorkflowError("financial account must be mapped to a Wallet account before import")
+        mapping_service = AccountMappingService(self.session)
+        mapping = mapping_service.get_active_mapping(event.account_id)
+        if mapping is None:
+            raise WorkflowError("financial account must have an active validated mapping before import")
         command = self.session.scalar(
             select(ImportCommand).where(ImportCommand.financial_event_id == event.id)
         )
@@ -749,7 +755,7 @@ class WalletWorkflow:
                 "paymentType": str(event.direction),
                 "counterParty": event.merchant or "",
                 "note": event.reference or "",
-                "accountReference": event.account.wallet_account_reference,
+                "accountReference": mapping.remote_account_id,
             }
             command = ImportCommand(
                 execution_run_id=run.id,

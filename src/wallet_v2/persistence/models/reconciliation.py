@@ -22,6 +22,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -64,6 +65,49 @@ class FinancialAccount(Base, Timestamped):
     events: Mapped[list["FinancialEvent"]] = relationship(back_populates="account")
     observations: Mapped[list["TransactionObservation"]] = relationship(
         back_populates="account"
+    )
+    mappings: Mapped[list["AccountMapping"]] = relationship(
+        back_populates="financial_account",
+        cascade="save-update, merge",
+        order_by="AccountMapping.created_at.desc()",
+    )
+
+
+class AccountMapping(Base, Timestamped):
+    """A validated, provenance-tracked mapping from a local FinancialAccount
+    to a remote Wallet account, backed by a catalog snapshot."""
+
+    __tablename__ = "account_mappings"
+    __table_args__ = (
+        Index(
+            "uq_account_mappings_active_one",
+            "financial_account_id",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+            sqlite_where=text("superseded_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    financial_account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("financial_accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    remote_account_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    validated_snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("catalog_sync_snapshots.id", ondelete="RESTRICT"), nullable=False
+    )
+    validated_snapshot_version: Mapped[int] = mapped_column(
+        Integer, nullable=False
+    )
+    validated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    financial_account: Mapped["FinancialAccount"] = relationship(
+        back_populates="mappings"
     )
 
 

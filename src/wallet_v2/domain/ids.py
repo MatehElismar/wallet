@@ -57,6 +57,9 @@ def new_receipt_id() -> ReceiptId:
 
 SubscriptionId = NewType("SubscriptionId", UUID)
 NotificationOutboxId = NewType("NotificationOutboxId", UUID)
+McpProfileSnapshotId = NewType("McpProfileSnapshotId", UUID)
+AdvisoryResearchId = NewType("AdvisoryResearchId", UUID)
+EnrichmentDecisionId = NewType("EnrichmentDecisionId", UUID)
 
 
 def new_subscription_id() -> SubscriptionId:
@@ -65,3 +68,15 @@ def new_subscription_id() -> SubscriptionId:
 
 def new_notification_outbox_id() -> NotificationOutboxId:
     return NotificationOutboxId(uuid4())
+
+
+def new_mcp_profile_snapshot_id() -> McpProfileSnapshotId:
+    return McpProfileSnapshotId(uuid4())
+
+
+def new_advisory_research_id() -> AdvisoryResearchId:
+    return AdvisoryResearchId(uuid4())
+
+
+def new_enrichment_decision_id() -> EnrichmentDecisionId:
+    return EnrichmentDecisionId(uuid4())

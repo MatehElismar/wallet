@@ -1,0 +1,51 @@
+{
+  "jsonrpc": "2.0",
+  "id": "test-req-records-01",
+  "result": {
+    "structuredContent": {
+      "records": [
+        {
+          "id": "rec_mcp_01",
+          "accountId": "acct_mcp_01",
+          "amount": {"value": -42.30, "currencyCode": "USD"},
+          "recordDate": "2026-06-15",
+          "counterParty": "Online Store",
+          "category": {"id": "cat_mcp_01", "name": "Groceries"},
+          "labels": [
+            {"id": "lbl_mcp_01", "name": "Food"},
+            {"id": "lbl_mcp_02", "name": "Weekly"}
+          ],
+          "paymentType": "debit_card",
+          "recordState": "cleared",
+          "source": "manual",
+          "accountIsBankSync": false
+        },
+        {
+          "id": "rec_mcp_02",
+          "accountId": "acct_mcp_01",
+          "amount": {"value": -15.00, "currencyCode": "USD"},
+          "recordDate": "2026-06-20",
+          "counterParty": "Coffee Shop",
+          "category": null,
+          "labels": [],
+          "paymentType": null,
+          "recordState": "cleared",
+          "source": null,
+          "accountIsBankSync": false
+        }
+      ],
+      "total": 2,
+      "limit": 200,
+      "offset": 0,
+      "nextOffset": 2,
+      "_meta": {
+        "syncedAt": "2026-07-19T10:00:00Z",
+        "rateLimit": {
+          "remaining": 299,
+          "capacity": 300,
+          "refillPerMinute": 60
+        }
+      }
+    }
+  }
+}

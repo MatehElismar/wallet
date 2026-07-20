@@ -1,0 +1,55 @@
+{
+  "limit": 30,
+  "offset": 0,
+  "categories": [
+    {
+      "id": "cat_01",
+      "name": "Groceries",
+      "color": "#4CAF50",
+      "parentId": null,
+      "archived": false
+    },
+    {
+      "id": "cat_02",
+      "name": "Restaurants",
+      "color": "#FF9800",
+      "parentId": null,
+      "archived": false
+    },
+    {
+      "id": "cat_03",
+      "name": "Transport",
+      "color": "#2196F3",
+      "parentId": null,
+      "archived": false
+    },
+    {
+      "id": "cat_04",
+      "name": "Salary",
+      "color": "#8BC34A",
+      "parentId": null,
+      "archived": false
+    },
+    {
+      "id": "cat_05",
+      "name": "Transfer",
+      "color": "#9C27B0",
+      "parentId": null,
+      "archived": false
+    },
+    {
+      "id": "cat_06",
+      "name": "Dining Out",
+      "color": "#FF5722",
+      "parentId": "cat_02",
+      "archived": false
+    },
+    {
+      "id": "cat_07",
+      "name": "Old Category",
+      "color": "#9E9E9E",
+      "parentId": null,
+      "archived": true
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "jsonrpc": "2.0",
+  "id": "test-req-budgets-01",
+  "result": {
+    "structuredContent": {
+      "budgets": [
+        {
+          "id": "bgt_mcp_01",
+          "name": "Groceries",
+          "period": "monthly",
+          "amount": 500.00,
+          "spent": 320.50,
+          "remaining": 179.50
+        },
+        {
+          "id": "bgt_mcp_02",
+          "name": "Dining",
+          "period": "monthly",
+          "amount": 200.00,
+          "spent": 150.00,
+          "remaining": 50.00
+        }
+      ],
+      "total": 2,
+      "limit": 200,
+      "offset": 0,
+      "_meta": {
+        "syncedAt": "2026-07-19T10:00:00Z",
+        "rateLimit": {
+          "remaining": 297,
+          "capacity": 300,
+          "refillPerMinute": 60
+        }
+      }
+    }
+  }
+}

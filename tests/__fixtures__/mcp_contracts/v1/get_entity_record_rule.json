@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": "test-req-entity-01",
+  "result": {
+    "structuredContent": {
+      "documentType": "record-rules",
+      "results": [
+        {
+          "id": "rule_mcp_01",
+          "name": "Coffee shop rule",
+          "keywords": ["COFFEE", "CAFE"],
+          "category": {"id": "cat_mcp_02"},
+          "labels": [{"id": "lbl_mcp_01"}],
+          "fromAccountId": null,
+          "toAccountId": null
+        }
+      ],
+      "limit": 200,
+      "offset": 0,
+      "_meta": {
+        "syncedAt": "2026-07-19T10:00:00Z",
+        "rateLimit": {
+          "remaining": 296,
+          "capacity": 300,
+          "refillPerMinute": 60
+        }
+      }
+    }
+  }
+}
