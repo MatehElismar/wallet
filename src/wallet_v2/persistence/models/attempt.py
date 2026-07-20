@@ -43,6 +43,10 @@ from wallet_v2.persistence.types import JSONB
 
 if TYPE_CHECKING:
     from wallet_v2.persistence.models.candidate import TransactionCandidate
+    from wallet_v2.persistence.models.reconciliation import (
+        BankStatement,
+        TransactionObservation,
+    )
     from wallet_v2.persistence.models.source_message import SourceMessage
 
 
@@ -86,6 +90,9 @@ class ProcessingAttempt(Base, Immutable):
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, default=uuid.uuid4
+    )
+    execution_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("execution_runs.id", ondelete="RESTRICT"), nullable=True
     )
     source_message_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("source_messages.id", ondelete="RESTRICT"),
@@ -134,4 +141,10 @@ class ProcessingAttempt(Base, Immutable):
     )
     candidates: Mapped[list["TransactionCandidate"]] = relationship(
         back_populates="attempt"
+    )
+    statements: Mapped[list["BankStatement"]] = relationship(
+        back_populates="processing_attempt", cascade="save-update, merge"
+    )
+    observations: Mapped[list["TransactionObservation"]] = relationship(
+        back_populates="processing_attempt", cascade="save-update, merge"
     )

@@ -53,6 +53,9 @@ _IMMUTABLE_TABLES = (
     "wallet_attempts",
     "audit_events",
     "inbox_cursor_history",
+    "bank_statement_lines",
+    "transaction_observations",
+    "financial_events",
 )
 
 
@@ -63,6 +66,10 @@ _TIMESTAMPED_TABLES = (
     "transaction_candidates",
     "review_tasks",
     "wallet_receipts",
+    "financial_accounts",
+    "bank_statements",
+    "reconciliation_links",
+    "statement_review_batches",
 )
 
 
@@ -158,7 +165,7 @@ def _make_import_command(
 
 
 class TestTableRegistry:
-    def test_all_twelve_tables_registered(self) -> None:
+    def test_all_twenty_tables_registered(self) -> None:
         from wallet_v2.persistence.base import Base
 
         expected = {
@@ -174,6 +181,14 @@ class TestTableRegistry:
             "wallet_attempts",
             "wallet_receipts",
             "audit_events",
+            "execution_runs",
+            "financial_accounts",
+            "bank_statements",
+            "bank_statement_lines",
+            "transaction_observations",
+            "reconciliation_links",
+            "statement_review_batches",
+            "financial_events",
         }
         assert set(Base.metadata.tables.keys()) == expected
 

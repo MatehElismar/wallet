@@ -1,8 +1,9 @@
-"""Import commands issued from approved candidates.
+"""Import commands issued from approved canonical financial events.
 
 An :class:`ImportCommand` is the durable record of an instruction to the
-Wallet provider to apply one transaction. It is created only from an
-approved candidate and carries a deterministic, unique idempotency key so
+Wallet provider to apply one transaction. New commands are created only from
+an approved statement-backed financial event (the nullable candidate origin is
+retained for legacy records) and carry a deterministic, unique idempotency key so
 that retries against the Wallet provider are exactly-once from the
 provider's perspective.
 
@@ -25,7 +26,8 @@ only ever reflects the *current* state.
 
 Immutability invariants that *do* hold for the command:
 
-* ``candidate_id`` is unique (one command per approved candidate).
+* Exactly one immutable origin is present: a legacy ``candidate_id`` or a
+  canonical ``financial_event_id``.
 * ``idempotency_key`` is unique and deterministic (one key per logical
   transaction; the Wallet provider must deduplicate on it).
 * ``payload`` is immutable after insert in practice: the application
@@ -58,11 +60,12 @@ from wallet_v2.persistence.base import Base, Timestamped
 
 if TYPE_CHECKING:
     from wallet_v2.persistence.models.candidate import TransactionCandidate
+    from wallet_v2.persistence.models.reconciliation import FinancialEvent
     from wallet_v2.persistence.models.wallet import WalletAttempt, WalletReceipt
 
 
 class ImportCommand(Base, Timestamped):
-    """An import command issued from an approved candidate.
+    """An import command issued from an approved canonical financial event.
 
     ``status`` is mutable and advances through the state machine. The
     ``payload``, ``candidate_id``, ``idempotency_key``, and ``issued_at``
@@ -73,10 +76,10 @@ class ImportCommand(Base, Timestamped):
 
     Attributes:
         id: UUID primary key.
-        candidate_id: 1:1 FK to the approved candidate. Unique, so a
-            candidate can spawn at most one import command.
-        idempotency_key: deterministic, unique key derived from the
-            candidate's immutable fields. The Wallet provider must honour
+        candidate_id: legacy 1:1 FK retained for historical commands.
+        financial_event_id: 1:1 FK to the approved canonical statement event.
+        idempotency_key: deterministic, unique key derived from the origin's
+            immutable fields. The Wallet provider must honour
             it for exactly-once semantics.
         status: the current state in the ``queued -> in_flight ->
             succeeded | failed | unknown -> reconciled`` machine.
@@ -94,12 +97,20 @@ class ImportCommand(Base, Timestamped):
             "candidate_id", name="uq_import_commands_candidate_one"
         ),
         UniqueConstraint(
+            "financial_event_id", name="uq_import_commands_financial_event_one"
+        ),
+        UniqueConstraint(
             "idempotency_key", name="uq_import_commands_idempotency_key"
         ),
         CheckConstraint(
             "status IN ('queued', 'in_flight', 'succeeded', "
             "'failed', 'unknown', 'reconciled')",
             name="ck_import_commands_status",
+        ),
+        CheckConstraint(
+            "(candidate_id IS NOT NULL AND financial_event_id IS NULL) "
+            "OR (candidate_id IS NULL AND financial_event_id IS NOT NULL)",
+            name="ck_import_commands_one_origin",
         ),
         CheckConstraint(
             "length(idempotency_key) >= 16",
@@ -109,9 +120,15 @@ class ImportCommand(Base, Timestamped):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    candidate_id: Mapped[uuid.UUID] = mapped_column(
+    execution_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("execution_runs.id", ondelete="RESTRICT"), nullable=True
+    )
+    candidate_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("transaction_candidates.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
+    )
+    financial_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("financial_events.id", ondelete="RESTRICT"), nullable=True
     )
     idempotency_key: Mapped[str] = mapped_column(
         String(128), nullable=False
@@ -126,7 +143,10 @@ class ImportCommand(Base, Timestamped):
         DateTime(timezone=True), nullable=False
     )
 
-    candidate: Mapped["TransactionCandidate"] = relationship(
+    candidate: Mapped["TransactionCandidate | None"] = relationship(
+        back_populates="import_command", uselist=False
+    )
+    financial_event: Mapped["FinancialEvent | None"] = relationship(
         back_populates="import_command", uselist=False
     )
     wallet_attempts: Mapped[list["WalletAttempt"]] = relationship(

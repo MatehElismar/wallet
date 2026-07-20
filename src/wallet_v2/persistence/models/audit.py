@@ -19,6 +19,7 @@ from typing import Any
 
 from sqlalchemy import (
     DateTime,
+    ForeignKey,
     Index,
     String,
 )
@@ -54,6 +55,9 @@ class AuditEvent(Base, Immutable):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    execution_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("execution_runs.id", ondelete="RESTRICT"), nullable=True
+    )
     entity_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     event_kind: Mapped[AuditEventKind] = mapped_column(

@@ -14,6 +14,7 @@ dependencies = [
     "sqlalchemy>=2.0.30,<3",
     "alembic>=1.13.2,<2",
     "psycopg[binary]>=3.1.19,<4",
+    "pypdf>=5.0.0,<6",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,9 @@ dev = [
 
 [project.urls]
 Documentation = "https://github.com/anomalyco/wallet-v2"
+
+[project.scripts]
+wallet-v2 = "wallet_v2.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wallet_v2"]

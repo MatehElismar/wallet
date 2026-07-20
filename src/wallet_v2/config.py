@@ -2,19 +2,25 @@
 
 Settings are loaded from environment variables prefixed with ``WALLET_V2__``.
 Every live integration (mailbox, LLM, Wallet) defaults to **disabled**, and
-enabling one without supplying every required field raises
-:class:`ConfigError` at load time.
+moving one to ``dry_run`` or ``live`` without supplying every required field
+raises :class:`ConfigError` at load time.
 
 Design rules enforced here:
 
-* No mock / test fallback flag exists. The application either runs against
-  real integrations or against nothing.
+* No mock / test fallback flag exists. Each integration can be disabled or
+  configured for a controlled run. The execution-run mode is the authority
+  for whether Wallet submissions are simulated (``dry_run``) or live.
+* Mode parsing is strict: only the exact enum values (``disabled``,
+  ``dry_run``, ``live``) are accepted. Anything else raises
+  :class:`ConfigError` rather than being coerced.
 * Boolean parsing is strict: only ``"true"`` and ``"false"`` (lowercase) are
   accepted. Anything else raises :class:`ConfigError` rather than being
   coerced.
 * Required base settings (``environment``, ``database.url``) have no default
   and must be supplied explicitly.
 * Secrets are tagged so they are never surfaced through ``repr``.
+* The mailbox connector is read-only by design; ``readonly`` must be ``true``
+  in every mode, including ``disabled``.
 """
 
 from __future__ import annotations
@@ -23,6 +29,8 @@ import os
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Mapping, TypeVar
+
+from wallet_v2.domain.enums import IntegrationMode
 
 __all__ = [
     "ConfigError",
@@ -75,6 +83,27 @@ def _parse_bool(mapping: Mapping[str, str], key: str, default: bool) -> bool:
     raise ConfigError(
         f"{key} must be exactly 'true' or 'false' (lowercase), got {raw!r}"
     )
+
+
+def _parse_mode(mapping: Mapping[str, str], key: str) -> IntegrationMode:
+    """Parse a strict ``IntegrationMode`` env value, defaulting to disabled.
+
+    Only exact enum values (``disabled``, ``dry_run``, ``live``) are
+    accepted. Any other value raises :class:`ConfigError` to preserve the
+    fail-closed contract — case variants such as ``LIVE`` or human-friendly
+    synonyms such as ``on`` are rejected rather than coerced.
+    """
+
+    raw = mapping.get(key)
+    if raw is None:
+        return IntegrationMode.DISABLED
+    try:
+        return IntegrationMode(raw)
+    except ValueError as exc:
+        allowed = ", ".join(member.value for member in IntegrationMode)
+        raise ConfigError(
+            f"{key} must be one of: {allowed}; got {raw!r}"
+        ) from exc
 
 
 def _parse_int(mapping: Mapping[str, str], key: str) -> int | None:
@@ -136,18 +165,31 @@ class DatabaseSettings:
 
 @dataclass(frozen=True, slots=True)
 class MailboxSettings:
-    """Mailbox connector settings (IMAP/Gmail). Disabled by default."""
+    """Mailbox connector settings (IMAP/Gmail). Disabled by default.
 
-    enabled: bool = False
+    ``mode`` selects whether the mailbox integration is loaded and whether
+    it performs real I/O. The ``enabled`` property is preserved as a
+    convenience for callers that previously checked the boolean flag; it is
+    ``True`` for both ``dry_run`` and ``live`` modes.
+
+    The mailbox connector is read-only by design: ``readonly`` must be
+    ``True`` in every mode, including ``disabled``.
+    """
+
+    mode: IntegrationMode = IntegrationMode.DISABLED
     host: str | None = None
     port: int | None = None
     username: str | None = None
     password: str | None = None  # secret
     readonly: bool = True
 
+    @property
+    def enabled(self) -> bool:
+        return self.mode != IntegrationMode.DISABLED
+
     def __repr__(self) -> str:
         return (
-            f"MailboxSettings(enabled={self.enabled}, host={self.host!r}, "
+            f"MailboxSettings(mode={self.mode!r}, host={self.host!r}, "
             f"port={self.port}, username={self.username!r}, "
             f"password={_secret_repr(self.password)}, readonly={self.readonly})"
         )
@@ -155,34 +197,58 @@ class MailboxSettings:
 
 @dataclass(frozen=True, slots=True)
 class LlmSettings:
-    """LLM extraction settings. Disabled by default."""
+    """LLM extraction settings. Disabled by default.
 
-    enabled: bool = False
+    ``mode`` selects whether LLM extraction is available to an execution
+    run. Extraction is a read operation against the configured provider; the
+    run mode controls Wallet mutation, not whether an email is sent to the
+    configured extractor. The ``enabled`` property is preserved as a
+    convenience for callers that previously checked the boolean flag.
+    """
+
+    mode: IntegrationMode = IntegrationMode.DISABLED
     provider: str | None = None
     model: str | None = None
     api_key: str | None = None  # secret
+    base_url: str | None = None
     timeout_seconds: float = 30.0
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != IntegrationMode.DISABLED
 
     def __repr__(self) -> str:
         return (
-            f"LlmSettings(enabled={self.enabled}, provider={self.provider!r}, "
+            f"LlmSettings(mode={self.mode!r}, provider={self.provider!r}, "
             f"model={self.model!r}, api_key={_secret_repr(self.api_key)}, "
+            f"base_url={self.base_url!r}, "
             f"timeout_seconds={self.timeout_seconds})"
         )
 
 
 @dataclass(frozen=True, slots=True)
 class WalletSettings:
-    """Wallet API connector settings. Disabled by default."""
+    """Wallet API connector settings. Disabled by default.
 
-    enabled: bool = False
+    ``mode`` selects whether the Wallet connector runs and whether
+    submissions are simulated (``dry_run``) or sent to the upstream
+    provider (``live``). The ``enabled`` property is preserved as a
+    convenience for callers that previously checked the boolean flag; it is
+    ``True`` for both ``dry_run`` and ``live`` modes.
+    """
+
+    mode: IntegrationMode = IntegrationMode.DISABLED
     base_url: str | None = None
     api_key: str | None = None  # secret
     timeout_seconds: float = 30.0
 
+    @property
+    def enabled(self) -> bool:
+        return self.mode != IntegrationMode.DISABLED
+
     def __repr__(self) -> str:
         return (
-            f"WalletSettings(enabled={self.enabled}, base_url={self.base_url!r}, "
+            f"WalletSettings(mode={self.mode!r}, base_url={self.base_url!r}, "
             f"api_key={_secret_repr(self.api_key)}, "
             f"timeout_seconds={self.timeout_seconds})"
         )
@@ -230,13 +296,13 @@ def _build_database(env: Mapping[str, str]) -> DatabaseSettings:
 
 
 def _build_mailbox(env: Mapping[str, str]) -> MailboxSettings:
-    enabled = _parse_bool(env, f"{ENV_PREFIX}MAILBOX__ENABLED", default=False)
+    mode = _parse_mode(env, f"{ENV_PREFIX}MAILBOX__MODE")
     host = _get(env, f"{ENV_PREFIX}MAILBOX__HOST")
     port = _parse_int(env, f"{ENV_PREFIX}MAILBOX__PORT")
     username = _get(env, f"{ENV_PREFIX}MAILBOX__USERNAME")
     password = _get(env, f"{ENV_PREFIX}MAILBOX__PASSWORD")
     readonly = _parse_bool(env, f"{ENV_PREFIX}MAILBOX__READONLY", default=True)
-    if enabled:
+    if mode != IntegrationMode.DISABLED:
         missing: list[str] = []
         if not host:
             missing.append("MAILBOX__HOST")
@@ -248,16 +314,17 @@ def _build_mailbox(env: Mapping[str, str]) -> MailboxSettings:
             missing.append("MAILBOX__PASSWORD")
         if missing:
             raise ConfigError(
-                "mailbox enabled but missing: " + ", ".join(missing)
+                f"mailbox mode={mode.value} but missing: " + ", ".join(missing)
             )
         if port is not None and not (1 <= port <= 65535):
             raise ConfigError("MAILBOX__PORT must be in 1..65535")
     if not readonly:
         # The V2 mailbox connector is read-only by design; allowing write mode
         # at the configuration level would violate the operational invariant.
+        # This holds in every mode, including ``disabled``.
         raise ConfigError("MAILBOX__READONLY must be true; write mode is forbidden")
     return MailboxSettings(
-        enabled=enabled,
+        mode=mode,
         host=host,
         port=port,
         username=username,
@@ -267,12 +334,13 @@ def _build_mailbox(env: Mapping[str, str]) -> MailboxSettings:
 
 
 def _build_llm(env: Mapping[str, str]) -> LlmSettings:
-    enabled = _parse_bool(env, f"{ENV_PREFIX}LLM__ENABLED", default=False)
+    mode = _parse_mode(env, f"{ENV_PREFIX}LLM__MODE")
     provider = _get(env, f"{ENV_PREFIX}LLM__PROVIDER")
     model = _get(env, f"{ENV_PREFIX}LLM__MODEL")
     api_key = _get(env, f"{ENV_PREFIX}LLM__API_KEY")
+    base_url = _get(env, f"{ENV_PREFIX}LLM__BASE_URL")
     timeout = _parse_float(env, f"{ENV_PREFIX}LLM__TIMEOUT_SECONDS", default=30.0)
-    if enabled:
+    if mode != IntegrationMode.DISABLED:
         missing: list[str] = []
         if not provider:
             missing.append("LLM__PROVIDER")
@@ -281,37 +349,44 @@ def _build_llm(env: Mapping[str, str]) -> LlmSettings:
         if not api_key:
             missing.append("LLM__API_KEY")
         if missing:
-            raise ConfigError("llm enabled but missing: " + ", ".join(missing))
+            raise ConfigError(
+                f"llm mode={mode.value} but missing: " + ", ".join(missing)
+            )
         if timeout <= 0:
             raise ConfigError("LLM__TIMEOUT_SECONDS must be > 0")
+        if base_url and not base_url.startswith(("http://", "https://")):
+            raise ConfigError("LLM__BASE_URL must be an http(s) URL")
     return LlmSettings(
-        enabled=enabled,
+        mode=mode,
         provider=provider,
         model=model,
         api_key=api_key,
+        base_url=base_url,
         timeout_seconds=timeout,
     )
 
 
 def _build_wallet(env: Mapping[str, str]) -> WalletSettings:
-    enabled = _parse_bool(env, f"{ENV_PREFIX}WALLET__ENABLED", default=False)
+    mode = _parse_mode(env, f"{ENV_PREFIX}WALLET__MODE")
     base_url = _get(env, f"{ENV_PREFIX}WALLET__BASE_URL")
     api_key = _get(env, f"{ENV_PREFIX}WALLET__API_KEY")
     timeout = _parse_float(env, f"{ENV_PREFIX}WALLET__TIMEOUT_SECONDS", default=30.0)
-    if enabled:
+    if mode != IntegrationMode.DISABLED:
         missing: list[str] = []
         if not base_url:
             missing.append("WALLET__BASE_URL")
         if not api_key:
             missing.append("WALLET__API_KEY")
         if missing:
-            raise ConfigError("wallet enabled but missing: " + ", ".join(missing))
+            raise ConfigError(
+                f"wallet mode={mode.value} but missing: " + ", ".join(missing)
+            )
         if not base_url.startswith(("http://", "https://")):
             raise ConfigError("WALLET__BASE_URL must be an http(s) URL")
         if timeout <= 0:
             raise ConfigError("WALLET__TIMEOUT_SECONDS must be > 0")
     return WalletSettings(
-        enabled=enabled,
+        mode=mode,
         base_url=base_url,
         api_key=api_key,
         timeout_seconds=timeout,
@@ -341,8 +416,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     mapping to keep themselves hermetic.
 
     Raises:
-        ConfigError: if any required value is missing or any enabled
-            integration is incompletely configured.
+        ConfigError: if any required value is missing or any integration
+            whose mode is not ``disabled`` is incompletely configured.
     """
 
     source: Mapping[str, str] = (

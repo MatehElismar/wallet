@@ -22,6 +22,28 @@ class _StrEnum(str, Enum):
         return self.value
 
 
+class IntegrationMode(_StrEnum):
+    """Operating mode for an integration (mailbox, LLM, Wallet).
+
+    Each integration (mailbox, LLM, Wallet) is configured with one of three
+    modes instead of a boolean enable flag. The mode controls whether an
+    adapter is available to a run. The execution-run mode determines whether
+    a Wallet import is recorded as intent or submitted to the provider.
+
+    - ``disabled`` : integration is off; no credentials required, no calls made
+    - ``dry_run``  : configured for a dry-run execution
+    - ``live``     : configured for a live execution
+
+    Modes are append-only: never reorder or rename existing members. New
+    members must be added at the end and given a stable, lowercase string
+    value.
+    """
+
+    DISABLED = "disabled"
+    DRY_RUN = "dry_run"
+    LIVE = "live"
+
+
 class MailboxSourceStatus(_StrEnum):
     """Lifecycle of a configured mailbox source.
 
@@ -81,6 +103,57 @@ class CandidateStatus(_StrEnum):
     REJECTED = "rejected"
     IMPORTED = "imported"
     DROPPED = "dropped"
+
+
+class DocumentKind(_StrEnum):
+    """Financial-document role assigned by extraction."""
+
+    NOTIFICATION = "notification"
+    STATEMENT = "statement"
+
+
+class ObservationStatus(_StrEnum):
+    """Lifecycle of an event observed outside an authoritative statement."""
+
+    PROVISIONAL = "provisional"
+    CONFIRMED = "confirmed"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+class StatementStatus(_StrEnum):
+    """Lifecycle of a bank statement document version."""
+
+    OPEN = "open"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+class ReconciliationOutcome(_StrEnum):
+    """Current resolution of a statement line against prior evidence."""
+
+    NEW = "new"
+    MATCHED = "matched"
+    AMBIGUOUS = "ambiguous"
+    IGNORED = "ignored"
+
+
+class ReconciliationMethod(_StrEnum):
+    """How a statement-line resolution was made."""
+
+    EXACT_REFERENCE = "exact_reference"
+    EXACT_DETAILS = "exact_details"
+    MANUAL = "manual"
+    NONE = "none"
+
+
+class FinancialEventStatus(_StrEnum):
+    """Lifecycle of a canonical, statement-confirmed financial event."""
+
+    POSTED = "posted"
+    REVERSED = "reversed"
+    CANCELLED = "cancelled"
 
 
 class ReviewDecision(_StrEnum):
@@ -170,3 +243,9 @@ class AuditEventKind(_StrEnum):
     WALLET_RECEIPT = "wallet_receipt"
     RECONCILIATION = "reconciliation"
     RETENTION_PURGE = "retention_purge"
+    EXECUTION_RUN_STARTED = "execution_run_started"
+    EXECUTION_RUN_FINISHED = "execution_run_finished"
+    STATEMENT_INGESTED = "statement_ingested"
+    STATEMENT_BATCH_DECIDED = "statement_batch_decided"
+    RECONCILIATION_RESOLVED = "reconciliation_resolved"
+    FINANCIAL_ACCOUNT_MAPPED = "financial_account_mapped"

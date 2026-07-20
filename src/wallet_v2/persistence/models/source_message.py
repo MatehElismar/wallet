@@ -41,6 +41,10 @@ if TYPE_CHECKING:
     from wallet_v2.persistence.models.attempt import ProcessingAttempt
     from wallet_v2.persistence.models.inbox import Inbox
     from wallet_v2.persistence.models.candidate import TransactionCandidate
+    from wallet_v2.persistence.models.reconciliation import (
+        BankStatement,
+        TransactionObservation,
+    )
 
 
 class SourceMessage(Base, Timestamped):
@@ -64,6 +68,9 @@ class SourceMessage(Base, Timestamped):
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, default=uuid.uuid4
+    )
+    execution_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("execution_runs.id", ondelete="RESTRICT"), nullable=True
     )
     inbox_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("inboxes.id", ondelete="RESTRICT"),
@@ -94,6 +101,12 @@ class SourceMessage(Base, Timestamped):
     candidates: Mapped[list["TransactionCandidate"]] = relationship(
         back_populates="source_message",
         cascade="save-update, merge",
+    )
+    statements: Mapped[list["BankStatement"]] = relationship(
+        back_populates="source_message", cascade="save-update, merge"
+    )
+    observations: Mapped[list["TransactionObservation"]] = relationship(
+        back_populates="source_message", cascade="save-update, merge"
     )
 
 

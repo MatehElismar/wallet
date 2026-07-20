@@ -70,6 +70,9 @@ class WalletAttempt(Base, Immutable):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    execution_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("execution_runs.id", ondelete="RESTRICT"), nullable=True
+    )
     import_command_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("import_commands.id", ondelete="RESTRICT"),
         nullable=False,

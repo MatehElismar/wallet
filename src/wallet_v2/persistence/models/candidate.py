@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from wallet_v2.persistence.models.import_command import ImportCommand
     from wallet_v2.persistence.models.review import ReviewTask
     from wallet_v2.persistence.models.source_message import SourceMessage
+    from wallet_v2.persistence.models.reconciliation import TransactionObservation
 
 
 class TransactionCandidate(Base, Timestamped):
@@ -58,8 +59,9 @@ class TransactionCandidate(Base, Timestamped):
     __table_args__ = (
         UniqueConstraint(
             "source_message_id",
+            "source_item_index",
             "candidate_version",
-            name="uq_candidates_source_message_version",
+            name="uq_candidates_source_item_version",
         ),
         CheckConstraint(
             "amount_minor > 0",
@@ -76,6 +78,10 @@ class TransactionCandidate(Base, Timestamped):
             "candidate_version >= 1",
             name="ck_candidates_version_positive",
         ),
+        CheckConstraint(
+            "source_item_index >= 1",
+            name="ck_candidates_source_item_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -91,6 +97,9 @@ class TransactionCandidate(Base, Timestamped):
     )
     candidate_version: Mapped[int] = mapped_column(
         Integer, nullable=False
+    )
+    source_item_index: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1
     )
     previous_candidate_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("transaction_candidates.id", ondelete="SET NULL"),
@@ -130,5 +139,8 @@ class TransactionCandidate(Base, Timestamped):
         back_populates="candidate", uselist=False
     )
     import_command: Mapped["ImportCommand | None"] = relationship(
+        back_populates="candidate", uselist=False
+    )
+    observation: Mapped["TransactionObservation | None"] = relationship(
         back_populates="candidate", uselist=False
     )
