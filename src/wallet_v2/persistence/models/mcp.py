@@ -89,7 +89,8 @@ class AdvisoryResearch(Base, Timestamped):
         CheckConstraint(
             "evidence_grade IN ("
             "'exact_recurrence', 'merchant_history', "
-            "'context_only', 'no_recommendation'"
+            "'context_only', 'no_recommendation', "
+            "'operator_override'"
             ")",
             name="ck_advisory_research_evidence_grade",
         ),
@@ -155,7 +156,8 @@ class EnrichmentDecision(Base, Immutable):
         CheckConstraint(
             "evidence_grade IN ("
             "'exact_recurrence', 'merchant_history', "
-            "'context_only', 'no_recommendation'"
+            "'context_only', 'no_recommendation', "
+            "'operator_override'"
             ")",
             name="ck_enrichment_decisions_evidence_grade",
         ),

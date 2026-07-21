@@ -153,6 +153,91 @@ class ErrorDetail(BaseModel):
     detail: str
 
 
+# ── Advisory enrichment (Phase C) ───────────────────────────────────────────
+
+
+class EvidenceRecordView(BaseModel):
+    """One bounded MCP evidence record referenced by a decision/research row."""
+
+    record_id: str | None = None
+    grade: str | None = None
+    score: float | None = None
+    account_id: str | None = None
+    record_date: str | None = None
+    counter_party: str | None = None
+    amount_value: float | None = None
+    currency: str | None = None
+    category_id: str | None = None
+    label_ids: list[str] = Field(default_factory=list)
+    payment_type: str | None = None
+
+
+class CandidateResearchView(BaseModel):
+    """Advisory-only research preview for a notification candidate.
+
+    Never finalizable and never importable — surfaced read-only in the PWA.
+    """
+
+    candidate_id: str
+    evidence_grade: str
+    # Always ``False``: candidate research is advisory context only and never
+    # offers a finalizable recommendation.
+    recommendation: bool = False
+    is_finalizable: bool = False
+    selected_account_id: str | None = None
+    selected_category_id: str | None = None
+    selected_label_ids: list[str] = Field(default_factory=list)
+    selected_payment_type: str | None = None
+    rationale: str = ""
+    integrity_hash: str | None = None
+    query_inputs: dict[str, object] | None = None
+    response_metadata: dict[str, object] | None = None
+    evidence: list[EvidenceRecordView] = Field(default_factory=list)
+
+
+class EventEnrichmentView(BaseModel):
+    """The current (latest-version) enrichment decision for a canonical event."""
+
+    event_id: str
+    version: int
+    evidence_grade: str
+    recommendation: bool
+    finalized: bool
+    can_finalize: bool
+    selected_account_id: str | None = None
+    selected_category_id: str | None = None
+    selected_label_ids: list[str] = Field(default_factory=list)
+    selected_payment_type: str | None = None
+    rationale: str = ""
+    query_inputs: dict[str, object] | None = None
+    evidence_refs: dict[str, object] | None = None
+    catalog_snapshot_ids: dict[str, object] | None = None
+    provenance: dict[str, object] | None = None
+    created_at: datetime | None = None
+
+
+class OverrideDecisionRequest(BaseModel):
+    """Explicit operator override that creates a new immutable version."""
+
+    account_id: str = Field(min_length=1, max_length=255)
+    category_id: str | None = Field(default=None, max_length=255)
+    label_ids: list[str] = Field(default_factory=list)
+    payment_type: str | None = Field(default=None, max_length=64)
+
+
+class DryRunRecordPreview(BaseModel):
+    """Exact Wallet REST create-record payload for a finalized decision.
+
+    ``submitted`` is always ``False``: this endpoint never writes to Wallet.
+    """
+
+    event_id: str
+    decision_version: int
+    submitted: bool = False
+    payload: dict[str, object]
+    catalog_snapshot_ids: dict[str, object] | None = None
+
+
 class PushConfigResponse(BaseModel):
     """Runtime push configuration exposed to the PWA frontend."""
 

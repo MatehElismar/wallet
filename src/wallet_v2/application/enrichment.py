@@ -52,7 +52,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from wallet_v2.application.account_mapping import AccountMappingService, MappingError
@@ -84,7 +84,21 @@ _DATE_WINDOW_DAYS = 180
 _MAX_PAGINATION_PAGES = 20
 
 _EVIDENCE_GRADES = frozenset(
-    {"exact_recurrence", "merchant_history", "context_only", "no_recommendation"}
+    {
+        "exact_recurrence",
+        "merchant_history",
+        "context_only",
+        "no_recommendation",
+        "operator_override",
+    }
+)
+
+# Grades that represent a concrete, finalizable selection rather than a
+# fail-closed no-recommendation. A candidate research preview is never in
+# this set (it cannot be finalized); an event decision becomes finalizable
+# only with one of these grades.
+_FINALIZABLE_GRADES = frozenset(
+    {"exact_recurrence", "merchant_history", "operator_override"}
 )
 
 
@@ -432,16 +446,32 @@ class EnrichmentService:
     def __init__(
         self,
         session: Session,
-        mcp: McpReadOnlyClient,
+        mcp: McpReadOnlyClient | None = None,
         *,
         clock: Callable[[], datetime] | None = None,
         profile_snapshot_id: object | None = None,
     ) -> None:
         self._session = session
-        self._mcp = mcp
+        self._mcp: McpReadOnlyClient | None = mcp
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._mapping_service = AccountMappingService(session)
         self._profile_snapshot_id = profile_snapshot_id
+
+    def _require_mcp(self) -> McpReadOnlyClient:
+        """Return the MCP client or fail closed when none is configured.
+
+        Only the MCP-backed surfaces (``ensure_profile`` and the research /
+        event-decision builders) require a client. The operator-only surfaces
+        (override, finalize, dry-run preview) never touch MCP and are safe to
+        construct without one, so those routes must not be forced to pass an
+        invalid ``None`` in the client's place.
+        """
+        if self._mcp is None:
+            raise ValueError(
+                "MCP advisory client is required for this operation but is "
+                "not configured"
+            )
+        return self._mcp
 
     # ── profile gate (once per run) ─────────────────────────────────────
 
@@ -468,8 +498,9 @@ class EnrichmentService:
                 self._require_valid_profile(existing)
                 return existing
 
-        profile = self._mcp.get_client_profile()
-        meta = self._mcp.last_response_meta
+        client = self._require_mcp()
+        profile = client.get_client_profile()
+        meta = client.last_response_meta
         synced_at: datetime | None = None
         if profile.synced_at:
             try:
@@ -750,7 +781,7 @@ class EnrichmentService:
             )
         if decision.finalized:
             return decision
-        if decision.evidence_grade not in ("exact_recurrence", "merchant_history"):
+        if decision.evidence_grade not in _FINALIZABLE_GRADES:
             raise ValueError(
                 f"cannot finalize a non-recommendation decision "
                 f"(grade={decision.evidence_grade!r})"
@@ -769,9 +800,158 @@ class EnrichmentService:
                 f"the selected values ({exc})"
             ) from exc
 
+        # Finalizing a newer version supersedes any previously finalized
+        # decision for the same event. Atomically clear the prior finalized
+        # flag(s) and flush *before* finalizing the target so the partial
+        # unique index (one finalized row per event) never sees two finalized
+        # rows in the same statement batch. The immutability intent is
+        # preserved for every field except this single mutable finalization
+        # state flag — an operator can only ever supersede a decision, not
+        # rewrite its selections or evidence.
+        prior_finalized = self._session.scalars(
+            select(EnrichmentDecision).where(
+                EnrichmentDecision.financial_event_id == event.id,
+                EnrichmentDecision.finalized.is_(True),
+                EnrichmentDecision.version != version,
+            )
+        ).all()
+        if prior_finalized:
+            for prior in prior_finalized:
+                prior.finalized = False
+            self._session.flush()
+
         decision.finalized = True
         self._session.flush()
         return decision
+
+    # ── explicit operator override (new immutable version) ────────────
+
+    def override_decision(
+        self,
+        event: FinancialEvent,
+        *,
+        account_id: str,
+        category_id: str | None,
+        label_ids: Sequence[str],
+        payment_type: str | None,
+        version: int | None = None,
+    ) -> EnrichmentDecision:
+        """Create a new immutable enrichment decision version from an explicit
+        operator choice.
+
+        Never mutates an existing version. The chosen account/category/labels
+        are re-validated against the *current* REST catalog snapshots and the
+        operation fails closed (``CatalogValidationError``) when any selected
+        item is missing or archived. The new version is stored as
+        ``operator_override`` (finalizable) and is not finalized.
+        """
+
+        try:
+            _validate_selections(
+                self._session,
+                account_id=account_id,
+                category_id=category_id,
+                label_ids=tuple(label_ids or ()),
+            )
+        except CatalogValidationError as exc:
+            raise CatalogValidationError(
+                f"override blocked: current catalog no longer validates the "
+                f"selected values ({exc})"
+            ) from exc
+
+        if version is None:
+            current = self._session.scalar(
+                select(func.max(EnrichmentDecision.version)).where(
+                    EnrichmentDecision.financial_event_id == event.id
+                )
+            )
+            version = (current or 0) + 1
+
+        snapshot_ids = self._current_snapshot_ids()
+        decision = EnrichmentDecision(
+            financial_event_id=event.id,
+            version=version,
+            evidence_grade="operator_override",
+            selected_account_id=account_id,
+            selected_category_id=category_id,
+            selected_label_ids=list(label_ids or ()),
+            selected_payment_type=payment_type,
+            confidence=None,
+            provenance={
+                "rationale": "operator override; validated against current "
+                "catalog snapshot",
+                "source": "operator_override",
+                "catalog_snapshot_ids": snapshot_ids,
+                "enrichment_service_version": "c1",
+            },
+            query_inputs={"override": True},
+            evidence_refs={},
+            catalog_snapshot_ids=snapshot_ids,
+            finalized=False,
+        )
+        self._session.add(decision)
+        self._session.flush()
+        return decision
+
+    # ── dry-run Wallet REST record payload preview ─────────────────────
+
+    def build_dry_run_payload(
+        self, event: FinancialEvent, decision: EnrichmentDecision
+    ) -> dict[str, object]:
+        """Return the exact Wallet REST create-record payload for a finalized
+        decision — without performing any HTTP or Wallet write.
+
+        Re-validates the selected account/category/labels against the current
+        catalog snapshots; if the catalog advanced or an item is now
+        missing/archived, the preview fails closed (``CatalogValidationError``)
+        rather than returning a stale payload. The returned payload matches
+        the authoritative :class:`~wallet_v2.application.contracts.CreateRecordRequest`
+        shape used by the Wallet REST adapter.
+        """
+
+        if not decision.finalized:
+            raise ValueError(
+                "dry-run payload preview is only available for a finalized decision"
+            )
+        if decision.evidence_grade not in _FINALIZABLE_GRADES:
+            raise ValueError(
+                f"cannot preview a non-recommendation decision "
+                f"(grade={decision.evidence_grade!r})"
+            )
+
+        try:
+            _validate_selections(
+                self._session,
+                account_id=decision.selected_account_id,  # type: ignore[arg-type]
+                category_id=decision.selected_category_id,
+                label_ids=tuple(decision.selected_label_ids or ()),
+            )
+        except CatalogValidationError as exc:
+            raise CatalogValidationError(
+                "dry-run preview blocked: current catalog no longer validates "
+                f"the selected values ({exc})"
+            ) from exc
+
+        from decimal import Decimal
+
+        from wallet_v2.application.contracts import CreateRecordRequest
+
+        amount_minor = event.amount_minor or 0
+        value_major = float(Decimal(amount_minor) / Decimal(100))
+        record_date = event.transaction_date or event.posting_date
+
+        request = CreateRecordRequest(
+            account_id=decision.selected_account_id,  # type: ignore[arg-type]
+            amount_value=value_major,
+            record_date=record_date.isoformat() if record_date else "",
+            category_id=decision.selected_category_id,
+            currency_code=event.currency,
+            note=event.reference,
+            counter_party=event.merchant,
+            label_ids=tuple(decision.selected_label_ids or ()),
+            payment_type=decision.selected_payment_type,
+        )
+        return request.as_payload()
 
     # ── internal helpers ────────────────────────────────────────────────
 
@@ -807,12 +987,13 @@ class EnrichmentService:
         with ``limit=_MAX_RECORDS_PER_QUERY``; the merged result is capped at
         that bound so raw history is never copied unbounded.
         """
+        client = self._require_mcp()
         collected: list[Any] = []
         offset = 0
         pages = 0
         while True:
             try:
-                page = self._mcp.get_records(
+                page = client.get_records(
                     account_id=plan.remote_account_id,
                     date_from=plan.date_from,
                     date_to=plan.date_to,
@@ -986,6 +1167,8 @@ class EnrichmentService:
         }
 
     def _response_metadata(self) -> dict[str, Any]:
+        if self._mcp is None:
+            return {}
         meta = self._mcp.last_response_meta
         return {
             "synced_at": meta.synced_at,

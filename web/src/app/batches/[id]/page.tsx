@@ -8,12 +8,21 @@ import {
   mapAccount,
   approveBatch,
   dryRunImport,
+  getEventEnrichment,
+  generateEventDecision,
+  overrideEventDecision,
+  finalizeEventDecision,
+  getDryRunPreview,
+  listCandidateResearchByAccount,
 } from "@/lib/api";
 import type {
   BatchDetail,
   StatementLineView,
   FinancialEventView,
   ObservationView,
+  EventEnrichment,
+  CandidateResearch,
+  DryRunRecordPreview,
 } from "@/lib/api";
 
 interface ResolveModal {
@@ -55,6 +64,14 @@ export default function BatchDetailPage() {
   const [dryRunResults, setDryRunResults] = useState<DryRunResult[]>([]);
   const [approvedEvents, setApprovedEvents] = useState<FinancialEventView[]>([]);
 
+  const [enrichmentByEvent, setEnrichmentByEvent] = useState<
+    Record<string, EventEnrichment | null>
+  >({});
+  const [candidateResearch, setCandidateResearch] = useState<CandidateResearch[]>(
+    []
+  );
+  const [enrichActionError, setEnrichActionError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!batchId) return;
     getBatchDetail(batchId)
@@ -69,6 +86,89 @@ export default function BatchDetailPage() {
       .then(setBatch)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!batch) return;
+    const eventIds = batch.lines
+      .map((l) => l.event_id)
+      .filter((id): id is string => Boolean(id));
+    if (eventIds.length === 0 && !batch.account) return;
+    Promise.all(
+      eventIds.map((id) =>
+        getEventEnrichment(id)
+          .then((e) => [id, e] as const)
+          .catch(() => [id, null] as const)
+      )
+    )
+      .then((pairs) => {
+        const next: Record<string, EventEnrichment | null> = {};
+        for (const [id, e] of pairs) next[id] = e;
+        setEnrichmentByEvent(next);
+      })
+      .catch(() => {});
+    if (batch.account) {
+      listCandidateResearchByAccount(batch.account.account_id)
+        .then(setCandidateResearch)
+        .catch(() => {});
+    }
+  }, [batch]);
+
+  const refreshEnrichment = (eventId: string) => {
+    getEventEnrichment(eventId)
+      .then((e) =>
+        setEnrichmentByEvent((prev) => ({ ...prev, [eventId]: e }))
+      )
+      .catch(() =>
+        setEnrichmentByEvent((prev) => ({ ...prev, [eventId]: null }))
+      );
+  };
+
+  const handleGenerate = async (eventId: string) => {
+    setEnrichActionError(null);
+    try {
+      await generateEventDecision(eventId);
+      refreshEnrichment(eventId);
+    } catch (err: unknown) {
+      setEnrichActionError(err instanceof Error ? err.message : "Generate failed");
+    }
+  };
+
+  const handleOverride = async (
+    eventId: string,
+    body: { account_id: string; category_id: string | null; label_ids: string[]; payment_type: string | null }
+  ) => {
+    setEnrichActionError(null);
+    try {
+      await overrideEventDecision(eventId, body);
+      refreshEnrichment(eventId);
+    } catch (err: unknown) {
+      setEnrichActionError(err instanceof Error ? err.message : "Override failed");
+    }
+  };
+
+  const handleFinalize = async (eventId: string) => {
+    setEnrichActionError(null);
+    try {
+      await finalizeEventDecision(eventId);
+      refreshEnrichment(eventId);
+    } catch (err: unknown) {
+      setEnrichActionError(err instanceof Error ? err.message : "Finalize failed");
+    }
+  };
+
+  const handleDryRunPreview = async (
+    eventId: string
+  ): Promise<DryRunRecordPreview | null> => {
+    setEnrichActionError(null);
+    try {
+      return await getDryRunPreview(eventId);
+    } catch (err: unknown) {
+      setEnrichActionError(
+        err instanceof Error ? err.message : "Dry-run preview failed"
+      );
+      return null;
+    }
   };
 
   if (loading) {
@@ -198,6 +298,10 @@ export default function BatchDetailPage() {
         <div className="alert alert-error">{actionError}</div>
       )}
 
+      {enrichActionError && (
+        <div className="alert alert-error">{enrichActionError}</div>
+      )}
+
       <div className="card">
         <div className="card-header">
           <div>
@@ -280,6 +384,9 @@ export default function BatchDetailPage() {
           key={line.line_id}
           line={line}
           isApproved={isApproved}
+          enrichment={
+            line.event_id ? enrichmentByEvent[line.event_id] : undefined
+          }
           onResolve={(l) => {
             setResolveOutcome("new");
             setResolveObservationId("");
@@ -299,6 +406,10 @@ export default function BatchDetailPage() {
           dryRunResult={dryRunResults.find(
             (r) => r.event_id === line.event_id
           )}
+          onGenerate={handleGenerate}
+          onOverride={handleOverride}
+          onFinalize={handleFinalize}
+          onDryRunPreview={handleDryRunPreview}
         />
       ))}
 
@@ -306,6 +417,20 @@ export default function BatchDetailPage() {
         <div className="alert alert-warn" style={{ marginTop: "1rem" }}>
           {ambiguousCount} ambiguous {ambiguousCount === 1 ? "line" : "lines"}{" "}
           must be resolved before approval.
+        </div>
+      )}
+
+      {candidateResearch.length > 0 && (
+        <div style={{ marginTop: "1.5rem" }}>
+          <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, margin: "0 0 0.5rem" }}>
+            Notification Candidate Research
+            <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "0.75rem", marginLeft: "0.5rem" }}>
+              advisory only · never finalizable
+            </span>
+          </h3>
+          {candidateResearch.map((c) => (
+            <CandidateResearchCard key={c.candidate_id} research={c} />
+          ))}
         </div>
       )}
 
@@ -479,15 +604,35 @@ export default function BatchDetailPage() {
 function LineItem({
   line,
   isApproved,
+  enrichment,
   onResolve,
   onDryRun,
   dryRunResult,
+  onGenerate,
+  onOverride,
+  onFinalize,
+  onDryRunPreview,
 }: {
   line: StatementLineView;
   isApproved: boolean;
+  enrichment?: EventEnrichment | null;
   onResolve: (line: StatementLineView) => void;
   onDryRun: (event: FinancialEventView) => void;
   dryRunResult: DryRunResult | undefined;
+  onGenerate: (eventId: string) => void;
+  onOverride: (
+    eventId: string,
+    body: {
+      account_id: string;
+      category_id: string | null;
+      label_ids: string[];
+      payment_type: string | null;
+    }
+  ) => void;
+  onFinalize: (eventId: string) => void;
+  onDryRunPreview: (
+    eventId: string
+  ) => Promise<DryRunRecordPreview | null>;
 }) {
   const link = line.reconciliation;
   const obs = line.observation;
@@ -588,10 +733,360 @@ function LineItem({
           )}
         </div>
       )}
+      {isApproved && line.event_id && (
+        <EnrichmentCard
+          eventId={line.event_id}
+          enrichment={enrichment}
+          onGenerate={onGenerate}
+          onOverride={onOverride}
+          onFinalize={onFinalize}
+          onDryRunPreview={onDryRunPreview}
+        />
+      )}
       {link?.note && (
         <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
           Note: {link.note}
         </div>
+      )}
+    </div>
+  );
+}
+
+const GRADE_LABEL: Record<string, string> = {
+  exact_recurrence: "Exact recurrence",
+  merchant_history: "Merchant history",
+  context_only: "Context only",
+  no_recommendation: "No recommendation",
+  operator_override: "Operator override",
+};
+
+function OverrideForm({
+  onOverride,
+  eventId,
+}: {
+  eventId: string;
+  onOverride: (
+    eventId: string,
+    body: {
+      account_id: string;
+      category_id: string | null;
+      label_ids: string[];
+      payment_type: string | null;
+    }
+  ) => void;
+}) {
+  const [accountId, setAccountId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [labels, setLabels] = useState("");
+  const [paymentType, setPaymentType] = useState("");
+
+  const submit = () => {
+    if (!accountId.trim()) return;
+    onOverride(eventId, {
+      account_id: accountId.trim(),
+      category_id: categoryId.trim() || null,
+      label_ids: labels
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      payment_type: paymentType.trim() || null,
+    });
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: "0.5rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.4rem",
+      }}
+    >
+      <div className="form-group" style={{ margin: 0 }}>
+        <label>Wallet account ID *</label>
+        <input value={accountId} onChange={(e) => setAccountId(e.target.value)} />
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="form-group" style={{ margin: 0, flex: 1 }}>
+          <label>Category ID</label>
+          <input value={categoryId} onChange={(e) => setCategoryId(e.target.value)} />
+        </div>
+        <div className="form-group" style={{ margin: 0, flex: 1 }}>
+          <label>Payment type</label>
+          <input
+            value={paymentType}
+            onChange={(e) => setPaymentType(e.target.value)}
+            placeholder="e.g. debit_card"
+          />
+        </div>
+      </div>
+      <div className="form-group" style={{ margin: 0 }}>
+        <label>Label IDs (comma-separated)</label>
+        <input value={labels} onChange={(e) => setLabels(e.target.value)} />
+      </div>
+      <button
+        className="btn-primary btn-small"
+        disabled={!accountId.trim()}
+        onClick={submit}
+      >
+        Save override (new version)
+      </button>
+    </div>
+  );
+}
+
+function EnrichmentCard({
+  eventId,
+  enrichment,
+  onGenerate,
+  onOverride,
+  onFinalize,
+  onDryRunPreview,
+}: {
+  eventId: string;
+  enrichment?: EventEnrichment | null;
+  onGenerate: (eventId: string) => void;
+  onOverride: (
+    eventId: string,
+    body: {
+      account_id: string;
+      category_id: string | null;
+      label_ids: string[];
+      payment_type: string | null;
+    }
+  ) => void;
+  onFinalize: (eventId: string) => void;
+  onDryRunPreview: (
+    eventId: string
+  ) => Promise<DryRunRecordPreview | null>;
+}) {
+  const [showOverride, setShowOverride] = useState(false);
+  const [showEvidence, setShowEvidence] = useState(false);
+  const [preview, setPreview] = useState<DryRunRecordPreview | null>(null);
+
+  const grade = enrichment?.evidence_grade;
+  const gradeText = grade ? (GRADE_LABEL[grade] ?? grade) : "Not generated";
+
+  const handlePreview = async () => {
+    const result = await onDryRunPreview(eventId);
+    if (result) setPreview(result);
+  };
+
+  return (
+    <div
+      className="card"
+      style={{ marginTop: "0.75rem", padding: "0.75rem" }}
+    >
+      <div className="card-header" style={{ marginBottom: "0.5rem" }}>
+        <div>
+          <div className="card-title" style={{ fontSize: "0.8125rem" }}>
+            Wallet Enrichment
+          </div>
+          <div className="card-subtitle" style={{ fontSize: "0.75rem" }}>
+            Evidence grade: <strong>{gradeText}</strong>
+            {enrichment && ` · v${enrichment.version}`}
+            {enrichment?.finalized && (
+              <span className="badge badge-approved" style={{ marginLeft: "0.5rem" }}>
+                finalized
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {!enrichment && (
+        <button
+          className="btn-primary btn-small"
+          onClick={() => onGenerate(eventId)}
+        >
+          Generate proposal
+        </button>
+      )}
+
+      {enrichment && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div style={{ fontSize: "0.75rem" }}>
+            <div>
+              Account:{" "}
+              <code>{enrichment.selected_account_id ?? "—"}</code>
+            </div>
+            <div>
+              Category:{" "}
+              <code>{enrichment.selected_category_id ?? "—"}</code>
+            </div>
+            <div>
+              Labels:{" "}
+              <code>
+                {enrichment.selected_label_ids.length
+                  ? enrichment.selected_label_ids.join(", ")
+                  : "—"}
+              </code>
+            </div>
+            <div>
+              Payment:{" "}
+              <code>{enrichment.selected_payment_type ?? "—"}</code>
+            </div>
+            {enrichment.rationale && (
+              <div style={{ color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                {enrichment.rationale}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              className="btn-primary btn-small"
+              disabled={!enrichment.can_finalize}
+              onClick={() => onFinalize(eventId)}
+              title={
+                enrichment.can_finalize
+                  ? "Finalize this decision"
+                  : "Only a recommendation/override can be finalized"
+              }
+            >
+              {enrichment.finalized ? "Finalized" : "Finalize"}
+            </button>
+            <button
+              className="btn-small"
+              onClick={() => setShowOverride((v) => !v)}
+            >
+              Override
+            </button>
+            <button
+              className="btn-small"
+              onClick={() => setShowEvidence((v) => !v)}
+            >
+              {showEvidence ? "Hide evidence" : "Evidence"}
+            </button>
+            <button
+              className="btn-small"
+              disabled={!enrichment.finalized}
+              onClick={handlePreview}
+              title={
+                enrichment.finalized
+                  ? "Preview exact Wallet REST payload"
+                  : "Finalize first to preview the payload"
+              }
+            >
+              Dry-run preview
+            </button>
+          </div>
+
+          {showOverride && (
+            <OverrideForm onOverride={onOverride} eventId={eventId} />
+          )}
+
+          {showEvidence && (
+            <pre
+              style={{
+                fontSize: "0.6875rem",
+                background: "var(--bg-muted, #1b1b1f)",
+                color: "var(--text-muted)",
+                padding: "0.5rem",
+                borderRadius: "6px",
+                overflowX: "auto",
+              }}
+            >
+              {JSON.stringify(
+                enrichment.evidence_refs ?? enrichment.query_inputs ?? {},
+                null,
+                2
+              )}
+            </pre>
+          )}
+
+          {preview && (
+            <div>
+              <div
+                style={{
+                  fontSize: "0.6875rem",
+                  color: "var(--text-muted)",
+                  marginBottom: "0.25rem",
+                }}
+              >
+                Exact Wallet REST record payload (not submitted · submitted=
+                {String(preview.submitted)})
+              </div>
+              <pre
+                style={{
+                  fontSize: "0.6875rem",
+                  background: "var(--bg-muted, #1b1b1f)",
+                  color: "var(--text)",
+                  padding: "0.5rem",
+                  borderRadius: "6px",
+                  overflowX: "auto",
+                }}
+              >
+                {JSON.stringify(preview.payload, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CandidateResearchCard({ research }: { research: CandidateResearch }) {
+  const [open, setOpen] = useState(false);
+  const gradeText =
+    GRADE_LABEL[research.evidence_grade] ?? research.evidence_grade;
+  return (
+    <div
+      className="card"
+      style={{
+        marginTop: "0.5rem",
+        padding: "0.75rem",
+        opacity: 0.92,
+      }}
+    >
+      <div className="card-header" style={{ marginBottom: "0.25rem" }}>
+        <div>
+          <div className="card-title" style={{ fontSize: "0.8125rem" }}>
+            {research.rationale || "Advisory research"}
+          </div>
+          <div className="card-subtitle" style={{ fontSize: "0.75rem" }}>
+            Grade: <strong>{gradeText}</strong> · read-only, not finalizable
+          </div>
+        </div>
+      </div>
+      <button
+        className="btn-small"
+        disabled
+        style={{ marginTop: "0.25rem" }}
+        title="Candidate research can never be finalized or imported"
+      >
+        Finalize (disabled)
+      </button>
+      <button
+        className="btn-small"
+        disabled
+        style={{ marginTop: "0.25rem", marginLeft: "0.5rem" }}
+        title="Candidate research has no Wallet payload preview"
+      >
+        Dry-run preview (disabled)
+      </button>
+      <button
+        className="btn-small"
+        style={{ marginTop: "0.25rem", marginLeft: "0.5rem" }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Hide evidence" : "Evidence"}
+      </button>
+      {open && research.evidence.length > 0 && (
+        <pre
+          style={{
+            fontSize: "0.6875rem",
+            background: "var(--bg-muted, #1b1b1f)",
+            color: "var(--text-muted)",
+            padding: "0.5rem",
+            borderRadius: "6px",
+            overflowX: "auto",
+            marginTop: "0.5rem",
+          }}
+        >
+          {JSON.stringify(research.evidence, null, 2)}
+        </pre>
       )}
     </div>
   );

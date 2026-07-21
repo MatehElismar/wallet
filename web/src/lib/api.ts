@@ -159,3 +159,119 @@ export async function dryRunImport(
     method: "POST",
   });
 }
+
+// ── Phase C: MCP advisory enrichment ──────────────────────────────────
+
+export interface EvidenceRecord {
+  record_id: string | null;
+  grade: string | null;
+  score: number | null;
+  account_id: string | null;
+  record_date: string | null;
+  counter_party: string | null;
+  amount_value: number | null;
+  currency: string | null;
+  category_id: string | null;
+  label_ids: string[];
+  payment_type: string | null;
+}
+
+export interface CandidateResearch {
+  candidate_id: string;
+  evidence_grade: string;
+  recommendation: boolean;
+  is_finalizable: boolean;
+  selected_account_id: string | null;
+  selected_category_id: string | null;
+  selected_label_ids: string[];
+  selected_payment_type: string | null;
+  rationale: string;
+  integrity_hash: string | null;
+  query_inputs: Record<string, unknown> | null;
+  response_metadata: Record<string, unknown> | null;
+  evidence: EvidenceRecord[];
+}
+
+export interface EventEnrichment {
+  event_id: string;
+  version: number;
+  evidence_grade: string;
+  recommendation: boolean;
+  finalized: boolean;
+  can_finalize: boolean;
+  selected_account_id: string | null;
+  selected_category_id: string | null;
+  selected_label_ids: string[];
+  selected_payment_type: string | null;
+  rationale: string;
+  query_inputs: Record<string, unknown> | null;
+  evidence_refs: Record<string, unknown> | null;
+  catalog_snapshot_ids: Record<string, unknown> | null;
+  provenance: Record<string, unknown> | null;
+  created_at: string | null;
+}
+
+export interface OverrideDecisionBody {
+  account_id: string;
+  category_id: string | null;
+  label_ids: string[];
+  payment_type: string | null;
+}
+
+export interface DryRunRecordPreview {
+  event_id: string;
+  decision_version: number;
+  submitted: boolean;
+  payload: Record<string, unknown>;
+  catalog_snapshot_ids: Record<string, unknown> | null;
+}
+
+export async function getCandidateResearch(
+  candidateId: string
+): Promise<CandidateResearch> {
+  return fetchJSON(`/enrichment/candidates/${candidateId}`);
+}
+
+export async function listCandidateResearchByAccount(
+  accountId: string
+): Promise<CandidateResearch[]> {
+  return fetchJSON(`/enrichment/candidates/account/${accountId}`);
+}
+
+export async function getEventEnrichment(
+  eventId: string
+): Promise<EventEnrichment> {
+  return fetchJSON(`/enrichment/events/${eventId}`);
+}
+
+export async function generateEventDecision(
+  eventId: string
+): Promise<EventEnrichment> {
+  return fetchJSON(`/enrichment/events/${eventId}/generate`, {
+    method: "POST",
+  });
+}
+
+export async function overrideEventDecision(
+  eventId: string,
+  body: OverrideDecisionBody
+): Promise<EventEnrichment> {
+  return fetchJSON(`/enrichment/events/${eventId}/override`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function finalizeEventDecision(
+  eventId: string
+): Promise<EventEnrichment> {
+  return fetchJSON(`/enrichment/events/${eventId}/finalize`, {
+    method: "POST",
+  });
+}
+
+export async function getDryRunPreview(
+  eventId: string
+): Promise<DryRunRecordPreview> {
+  return fetchJSON(`/enrichment/events/${eventId}/dry-run-preview`);
+}
