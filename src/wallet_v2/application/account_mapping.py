@@ -67,6 +67,15 @@ def score_account_match(
     elif issuer_clean in item_clean or item_clean in issuer_clean:
         score += 0.3
 
+    # Slight penalty for extra tokens in the catalog name not contributed by
+    # the issuer or reference.  Breaks ties between otherwise identical matches
+    # (e.g.  "CC BHD 1281" vs "CC BHD 1281 USD") without disturbing
+    # meaningful ranking gaps.
+    known_words = set(issuer_words) | set(ref_digits) | {issuer_clean, ref_clean}
+    item_tokens = [t for t in re.split(r"\W+", item_clean) if len(t) >= 2]
+    extra = sum(1 for t in item_tokens if t not in known_words)
+    score -= extra * 0.05
+
     return min(score, 1.0)
 
 
@@ -275,7 +284,7 @@ class AccountMappingService:
         matches = find_catalog_account_matches(items, issuer, external_reference)
         if matches and matches[0].score >= threshold:
             best = matches[0]
-            if len(matches) == 1 or (matches[0].score - matches[1].score >= 0.15):
+            if len(matches) == 1 or (matches[0].score - matches[1].score >= 0.05):
                 return self.create_mapping(
                     financial_account_id=financial_account_id,
                     remote_account_id=best.remote_account_id,

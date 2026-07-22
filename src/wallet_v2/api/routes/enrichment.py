@@ -267,7 +267,7 @@ def get_candidate_research(
     if research is None and mcp_client is not None:
         try:
             svc = EnrichmentService(session, mcp_client)
-            svc.build_candidate_advisory_research(candidate)
+            svc.build_candidate_preview(candidate)
             session.commit()
             research = session.scalar(
                 select(AdvisoryResearch)
