@@ -186,8 +186,11 @@ export interface CandidateResearch {
   recommendation: boolean;
   is_finalizable: boolean;
   selected_account_id: string | null;
+  selected_account_name: string | null;
   selected_category_id: string | null;
+  selected_category_name: string | null;
   selected_label_ids: string[];
+  selected_label_names: string[];
   selected_payment_type: string | null;
   rationale: string;
   integrity_hash: string | null;
