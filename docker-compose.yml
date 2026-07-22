@@ -17,5 +17,46 @@ services:
       retries: 10
     restart: unless-stopped
 
+  api:
+    build: .
+    container_name: wallet-v2-api
+    environment:
+      WALLET_V2__DATABASE__URL: postgresql+psycopg://wallet_v2:wallet_v2@postgres:5432/wallet_v2
+      WALLET_V2__ENVIRONMENT: dev
+      WALLET_V2__MAILBOX__MODE: ${WALLET_V2__MAILBOX__MODE:-disabled}
+      WALLET_V2__MAILBOX__PROVIDER: ${WALLET_V2__MAILBOX__PROVIDER:-}
+      WALLET_V2__MAILBOX__HOST: ${WALLET_V2__MAILBOX__HOST:-}
+      WALLET_V2__MAILBOX__PORT: ${WALLET_V2__MAILBOX__PORT:-}
+      WALLET_V2__MAILBOX__USERNAME: ${WALLET_V2__MAILBOX__USERNAME:-}
+      WALLET_V2__MAILBOX__PASSWORD: ${WALLET_V2__MAILBOX__PASSWORD:-}
+      WALLET_V2__MAILBOX__READONLY: "true"
+      WALLET_V2__LLM__MODE: ${WALLET_V2__LLM__MODE:-disabled}
+      WALLET_V2__LLM__PROVIDER: ${WALLET_V2__LLM__PROVIDER:-}
+      WALLET_V2__LLM__MODEL: ${WALLET_V2__LLM__MODEL:-}
+      WALLET_V2__LLM__API_KEY: ${WALLET_V2__LLM__API_KEY:-}
+      WALLET_V2__WALLET__MODE: ${WALLET_V2__WALLET__MODE:-disabled}
+      WALLET_V2__WALLET__BASE_URL: ${WALLET_V2__WALLET__BASE_URL:-}
+      WALLET_V2__WALLET__API_KEY: ${WALLET_V2__WALLET__API_KEY:-}
+      WALLET_V2__MCP__ENABLED: ${WALLET_V2__MCP__ENABLED:-false}
+      WALLET_V2__MCP__BASE_URL: ${WALLET_V2__MCP__BASE_URL:-}
+      WALLET_V2__MCP__API_KEY: ${WALLET_V2__MCP__API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: web/
+    container_name: wallet-v2-web
+    environment:
+      WALLET_V2_API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   wallet-v2-pgdata:
