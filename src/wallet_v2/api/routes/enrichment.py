@@ -44,8 +44,36 @@ from wallet_v2.persistence.models import (
 )
 from wallet_v2.persistence.models.mcp import AdvisoryResearch, EnrichmentDecision
 from wallet_v2.persistence.models.source_message import SourceMessage
+from wallet_v2.persistence.models.wallet_catalog import CatalogSyncSnapshot, CatalogSyncCursor
 
 router = APIRouter(prefix="/enrichment", tags=["enrichment"])
+
+
+# ── catalog name resolution ──────────────────────────────────────────────
+
+
+def _resolve_catalog_name(session: Session, resource_kind: str, item_id: str) -> str | None:
+    cursor = session.scalar(
+        select(CatalogSyncCursor).where(CatalogSyncCursor.resource_kind == resource_kind)
+    )
+    if cursor is None or cursor.current_snapshot_id is None:
+        return None
+    snap = session.get(CatalogSyncSnapshot, cursor.current_snapshot_id)
+    if snap is None or not snap.catalog_data:
+        return None
+    for item in snap.catalog_data.get("items") or []:
+        if item.get("id") == item_id:
+            return (item.get("name") or item.get("title") or item_id)
+    return None
+
+
+def _resolve_catalog_names(session: Session, resource_kind: str, ids: list[str]) -> list[str]:
+    names: list[str] = []
+    for iid in ids:
+        n = _resolve_catalog_name(session, resource_kind, iid)
+        if n:
+            names.append(n)
+    return names
 
 
 # ── view builders ────────────────────────────────────────────────────────
@@ -122,12 +150,15 @@ def _vote_from_evidence(records: list[dict[str, Any]], grade: str) -> dict[str, 
     }
 
 
-def _research_to_view(research: AdvisoryResearch) -> CandidateResearchView:
+def _research_to_view(research: AdvisoryResearch, session: Session) -> CandidateResearchView:
     query_inputs = research.query_inputs or {}
     source = _candidate_source_info(research)
     evidence_ids = research.evidence_ids or {}
     raw_records: list[dict[str, Any]] = evidence_ids.get("records") or []
     vote = _vote_from_evidence(raw_records, "merchant_history") if raw_records else {}
+    acct_id = query_inputs.get("remote_account_id")
+    cat_id = vote.get("category_id")
+    label_ids = vote.get("label_ids") or []
     return CandidateResearchView(
         candidate_id=str(research.candidate_id),
         evidence_grade=research.evidence_grade,
@@ -135,9 +166,12 @@ def _research_to_view(research: AdvisoryResearch) -> CandidateResearchView:
         # finalized or imported, so it never surfaces as a recommendation.
         recommendation=False,
         is_finalizable=False,
-        selected_account_id=query_inputs.get("remote_account_id"),
-        selected_category_id=vote.get("category_id"),
-        selected_label_ids=vote.get("label_ids") or [],
+        selected_account_id=acct_id,
+        selected_account_name=_resolve_catalog_name(session, "accounts", acct_id) if acct_id else None,
+        selected_category_id=cat_id,
+        selected_category_name=_resolve_catalog_name(session, "categories", cat_id) if cat_id else None,
+        selected_label_ids=label_ids,
+        selected_label_names=_resolve_catalog_names(session, "labels", label_ids),
         selected_payment_type=vote.get("payment_type"),
         rationale=research.evidence_grade + ": " + (query_inputs.get("rationale") or ""),
         integrity_hash=research.integrity_hash,
@@ -274,7 +308,7 @@ def list_candidate_research(
             .order_by(AdvisoryResearch.created_at.desc())
         )
         if research is not None:
-            out.append(_research_to_view(research))
+            out.append(_research_to_view(research, session))
         else:
             out.append(_candidate_to_view(cand))
     return out
@@ -307,7 +341,7 @@ def get_candidate_research(
         except Exception:
             pass
     if research is not None:
-        return _research_to_view(research)
+        return _research_to_view(research, session)
     return _candidate_to_view(candidate)
 
 
@@ -339,7 +373,7 @@ def list_candidate_research_by_account(
         .where(TransactionObservation.account_id == account_id)
         .order_by(AdvisoryResearch.created_at.desc())
     ).unique().all()
-    return [_research_to_view(r) for r in rows]
+    return [_research_to_view(r, session) for r in rows]
 
 
 # ── event enrichment decisions ──────────────────────────────────────────

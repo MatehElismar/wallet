@@ -186,8 +186,11 @@ class CandidateResearchView(BaseModel):
     recommendation: bool = False
     is_finalizable: bool = False
     selected_account_id: str | None = None
+    selected_account_name: str | None = None
     selected_category_id: str | None = None
+    selected_category_name: str | None = None
     selected_label_ids: list[str] = Field(default_factory=list)
+    selected_label_names: list[str] = Field(default_factory=list)
     selected_payment_type: str | None = None
     rationale: str = ""
     integrity_hash: str | None = None

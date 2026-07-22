@@ -22,9 +22,9 @@ function formatMinor(minor: number, currency: string) {
 function buildRecordPayload(research: CandidateResearch): Record<string, unknown> | null {
   if (!research.selected_account_id) return null;
   return {
-    accountId: research.selected_account_id,
-    categoryId: research.selected_category_id || undefined,
-    labelIds: research.selected_label_ids.length ? research.selected_label_ids : undefined,
+    accountId: research.selected_account_name || research.selected_account_id,
+    categoryId: research.selected_category_name || research.selected_category_id || undefined,
+    labelIds: research.selected_label_names.length ? research.selected_label_names : research.selected_label_ids.length ? research.selected_label_ids : undefined,
     paymentType: research.selected_payment_type || undefined,
     recordDate: research.transaction_date || undefined,
     amount: research.amount_minor != null && research.currency
@@ -70,18 +70,20 @@ export function CandidateResearchCard({
           <div style={{ fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
             <div>
               Account:{" "}
-              <code>{research.selected_account_id || "—"}</code>
+              <code>{research.selected_account_name || research.selected_account_id || "—"}</code>
             </div>
             <div>
               Category:{" "}
-              <code>{research.selected_category_id || "—"}</code>
+              <code>{research.selected_category_name || research.selected_category_id || "—"}</code>
             </div>
             <div>
               Labels:{" "}
               <code>
-                {research.selected_label_ids.length
-                  ? research.selected_label_ids.join(", ")
-                  : "—"}
+                {research.selected_label_names.length
+                  ? research.selected_label_names.join(", ")
+                  : research.selected_label_ids.length
+                    ? research.selected_label_ids.join(", ")
+                    : "—"}
               </code>
             </div>
             <div>
