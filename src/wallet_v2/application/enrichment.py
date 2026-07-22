@@ -662,56 +662,44 @@ class EnrichmentService:
             rationale=proposal.rationale,
         )
 
-    # ── statement-line & canonical-event enrichment decision ─────────────
+    # ── canonical-event enrichment decision ─────────────────────────────
 
-    def build_line_decision(
-        self,
-        line: BankStatementLine,
-        *,
-        version: int = 1,
-        event: FinancialEvent | None = None,
+    def build_event_decision(
+        self, event: FinancialEvent, *, version: int = 1
     ) -> EnrichmentDecision:
-        """Produce a versioned, immutable enrichment decision for a statement line."""
+        """Produce a versioned, immutable enrichment decision for an event.
+
+        The account is taken from the active validated mapping. Historical
+        records are ranked locally; category/label/payment come from a local
+        majority vote. The proposal is re-validated against the current
+        catalog snapshots before it is persisted. Weak/tie/error/stale input
+        yields a ``no_recommendation`` decision with no selections.
+        """
         try:
             profile_snapshot = self.ensure_profile()
         except (ValueError, PermissionError) as exc:
+            # Fail closed: a missing/incomplete profile or missing
+            # records.read scope must not escape — persist a no_recommendation
+            # decision rather than proceeding to query or guess.
             profile_snapshot = self._profile_snapshot_for_failure()
             return self._persist_no_rec(
-                event or line, profile_snapshot, version, str(exc)
+                event, profile_snapshot, version, str(exc)
             )
-
-        account_id = event.account_id if event else line.statement.account_id
-        direction = str(event.direction if event else line.direction)
-        amount_minor = event.amount_minor if event else line.amount_minor
-        currency = event.currency if event else line.currency
-        merchant = event.merchant if event else line.merchant
-        event_date = (
-            (event.transaction_date or event.posting_date)
-            if event
-            else (
-                line.transaction_date
-                or line.posting_date
-                or (line.event.transaction_date if line.event else None)
-                or (line.event.posting_date if line.event else None)
-                or line.statement.statement_date
-            )
-        )
-
         plan = self._plan_for(
-            account_id=account_id,
-            direction=direction,
-            amount_minor=amount_minor,
-            currency=currency,
-            merchant=merchant,
-            event_date=event_date,
+            account_id=event.account_id,
+            direction=str(event.direction),
+            amount_minor=event.amount_minor,
+            currency=event.currency,
+            merchant=event.merchant,
+            event_date=event.transaction_date or event.posting_date,
         )
         if plan is None:
-            return self._persist_no_rec(event or line, profile_snapshot, version,
+            return self._persist_no_rec(event, profile_snapshot, version,
                                         "no active validated mapping")
 
         result = self._query_records(plan)
         if result is None:
-            return self._persist_no_rec(event or line, profile_snapshot, version,
+            return self._persist_no_rec(event, profile_snapshot, version,
                                         "record query failed or malformed")
 
         ranked = _rank_records(
@@ -719,7 +707,7 @@ class EnrichmentService:
             merchant_norm=_normalize_merchant(plan.merchant),
             signed_amount_minor=plan.signed_amount_minor,
             currency=plan.currency,
-            event_date=event_date,
+            event_date=event.transaction_date or event.posting_date,
         )
         proposal = self._propose_from_ranked(ranked, plan.remote_account_id)
 
@@ -729,6 +717,7 @@ class EnrichmentService:
             query_inputs=query_inputs,
             evidence_ids=[e["record_id"] for e in evidence_ids],
         )
+        response_metadata = self._response_metadata()
 
         if proposal.recommendation:
             try:
@@ -740,14 +729,12 @@ class EnrichmentService:
                 )
             except CatalogValidationError:
                 return self._persist_no_rec(
-                    event or line, profile_snapshot, version,
+                    event, profile_snapshot, version,
                     "selected catalog item missing or archived",
                 )
 
-        event_id = event.id if event else (line.event.id if line.event else None)
         decision = EnrichmentDecision(
-            statement_line_id=line.id,
-            financial_event_id=event_id,
+            financial_event_id=event.id,
             version=version,
             evidence_grade=proposal.evidence_grade,
             selected_account_id=proposal.selected_account_id,
@@ -770,49 +757,28 @@ class EnrichmentService:
         self._session.flush()
         return decision
 
-    def build_event_decision(
-        self, event: FinancialEvent, *, version: int = 1
-    ) -> EnrichmentDecision:
-        """Produce a versioned, immutable enrichment decision for an event."""
-        return self.build_line_decision(event.statement_line, version=version, event=event)
-
     # ── finalization (re-validates against current catalog) ─────────────
 
     def finalize_decision(
-        self,
-        target: FinancialEvent | BankStatementLine,
-        *,
-        version: int,
-        event: FinancialEvent | None = None,
+        self, event: FinancialEvent, *, version: int
     ) -> EnrichmentDecision:
-        """Finalize a stored, non-finalized decision, re-validating choices."""
-        if isinstance(target, FinancialEvent):
-            statement_line_id = target.statement_line_id
-            financial_event = target
-        else:
-            statement_line_id = target.id
-            financial_event = event or target.event
+        """Finalize a stored, non-finalized decision, re-validating choices.
 
+        Re-validates the selected account/category/labels against the
+        *current* catalog snapshots. If the catalog advanced or an item is
+        archived/missing, the finalization fails closed rather than carrying
+        a stale choice forward.
+        """
         decision = self._session.scalar(
             select(EnrichmentDecision).where(
-                EnrichmentDecision.statement_line_id == statement_line_id,
+                EnrichmentDecision.financial_event_id == event.id,
                 EnrichmentDecision.version == version,
             )
         )
-        if decision is None and financial_event is not None:
-            decision = self._session.scalar(
-                select(EnrichmentDecision).where(
-                    EnrichmentDecision.financial_event_id == financial_event.id,
-                    EnrichmentDecision.version == version,
-                )
-            )
         if decision is None:
-            target_id = getattr(target, "id", target)
             raise ValueError(
-                f"no enrichment decision for target {target_id!r} version {version}"
+                f"no enrichment decision for event {event.id!r} version {version}"
             )
-        if financial_event is not None and decision.financial_event_id != financial_event.id:
-            decision.financial_event_id = financial_event.id
         if decision.finalized:
             return decision
         if decision.evidence_grade not in _FINALIZABLE_GRADES:
@@ -834,9 +800,17 @@ class EnrichmentService:
                 f"the selected values ({exc})"
             ) from exc
 
+        # Finalizing a newer version supersedes any previously finalized
+        # decision for the same event. Atomically clear the prior finalized
+        # flag(s) and flush *before* finalizing the target so the partial
+        # unique index (one finalized row per event) never sees two finalized
+        # rows in the same statement batch. The immutability intent is
+        # preserved for every field except this single mutable finalization
+        # state flag — an operator can only ever supersede a decision, not
+        # rewrite its selections or evidence.
         prior_finalized = self._session.scalars(
             select(EnrichmentDecision).where(
-                EnrichmentDecision.statement_line_id == statement_line_id,
+                EnrichmentDecision.financial_event_id == event.id,
                 EnrichmentDecision.finalized.is_(True),
                 EnrichmentDecision.version != version,
             )
@@ -854,7 +828,7 @@ class EnrichmentService:
 
     def override_decision(
         self,
-        target: FinancialEvent | BankStatementLine,
+        event: FinancialEvent,
         *,
         account_id: str,
         category_id: str | None,
@@ -862,14 +836,15 @@ class EnrichmentService:
         payment_type: str | None,
         version: int | None = None,
     ) -> EnrichmentDecision:
-        """Create a new immutable enrichment decision version from an explicit operator choice."""
+        """Create a new immutable enrichment decision version from an explicit
+        operator choice.
 
-        if isinstance(target, FinancialEvent):
-            statement_line_id = target.statement_line_id
-            financial_event_id = target.id
-        else:
-            statement_line_id = target.id
-            financial_event_id = target.event.id if target.event else None
+        Never mutates an existing version. The chosen account/category/labels
+        are re-validated against the *current* REST catalog snapshots and the
+        operation fails closed (``CatalogValidationError``) when any selected
+        item is missing or archived. The new version is stored as
+        ``operator_override`` (finalizable) and is not finalized.
+        """
 
         try:
             _validate_selections(
@@ -887,15 +862,14 @@ class EnrichmentService:
         if version is None:
             current = self._session.scalar(
                 select(func.max(EnrichmentDecision.version)).where(
-                    EnrichmentDecision.statement_line_id == statement_line_id
+                    EnrichmentDecision.financial_event_id == event.id
                 )
             )
             version = (current or 0) + 1
 
         snapshot_ids = self._current_snapshot_ids()
         decision = EnrichmentDecision(
-            statement_line_id=statement_line_id,
-            financial_event_id=financial_event_id,
+            financial_event_id=event.id,
             version=version,
             evidence_grade="operator_override",
             selected_account_id=account_id,
@@ -1247,25 +1221,17 @@ class EnrichmentService:
 
     def _persist_no_rec(
         self,
-        target: FinancialEvent | BankStatementLine,
+        event: FinancialEvent,
         profile_snapshot: McpProfileSnapshot,
         version: int,
         rationale: str,
     ) -> EnrichmentDecision:
-        if isinstance(target, FinancialEvent):
-            statement_line_id = target.statement_line_id
-            financial_event_id = target.id
-        else:
-            statement_line_id = target.id
-            financial_event_id = target.event.id if target.event else None
-
         query_inputs = {"rationale": rationale}
         integrity_hash = compute_integrity_hash(
             query_inputs=query_inputs, evidence_ids=[]
         )
         decision = EnrichmentDecision(
-            statement_line_id=statement_line_id,
-            financial_event_id=financial_event_id,
+            financial_event_id=event.id,
             version=version,
             evidence_grade="no_recommendation",
             selected_account_id=None,
