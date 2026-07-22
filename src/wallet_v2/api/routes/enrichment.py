@@ -98,9 +98,36 @@ def _evidence_records(research: AdvisoryResearch) -> list[EvidenceRecordView]:
     return out
 
 
+def _vote_from_evidence(records: list[dict[str, Any]], grade: str) -> dict[str, Any]:
+    """Extract top-voted category, labels, and payment from evidence records."""
+    matching = [r for r in records if r.get("grade") == grade]
+    if not matching:
+        matching = [r for r in records if r.get("grade") == "context_only"]
+    if not matching:
+        return {}
+
+    from collections import Counter
+
+    cat_votes = Counter(r.get("category_id") for r in matching if r.get("category_id"))
+    pmt_votes = Counter(r.get("payment_type") for r in matching if r.get("payment_type"))
+    label_votes: Counter[str] = Counter()
+    for r in matching:
+        for lid in r.get("label_ids") or []:
+            label_votes[lid] += 1
+
+    return {
+        "category_id": cat_votes.most_common(1)[0][0] if cat_votes else None,
+        "label_ids": [l for l, _ in label_votes.most_common(5)] if label_votes else [],
+        "payment_type": pmt_votes.most_common(1)[0][0] if pmt_votes else None,
+    }
+
+
 def _research_to_view(research: AdvisoryResearch) -> CandidateResearchView:
     query_inputs = research.query_inputs or {}
     source = _candidate_source_info(research)
+    evidence_ids = research.evidence_ids or {}
+    raw_records: list[dict[str, Any]] = evidence_ids.get("records") or []
+    vote = _vote_from_evidence(raw_records, "merchant_history") if raw_records else {}
     return CandidateResearchView(
         candidate_id=str(research.candidate_id),
         evidence_grade=research.evidence_grade,
@@ -109,7 +136,10 @@ def _research_to_view(research: AdvisoryResearch) -> CandidateResearchView:
         recommendation=False,
         is_finalizable=False,
         selected_account_id=query_inputs.get("remote_account_id"),
-        rationale=query_inputs.get("rationale", ""),
+        selected_category_id=vote.get("category_id"),
+        selected_label_ids=vote.get("label_ids") or [],
+        selected_payment_type=vote.get("payment_type"),
+        rationale=research.evidence_grade + ": " + (query_inputs.get("rationale") or ""),
         integrity_hash=research.integrity_hash,
         query_inputs=research.query_inputs,
         response_metadata=research.response_metadata,
