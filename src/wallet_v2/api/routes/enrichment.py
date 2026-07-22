@@ -19,7 +19,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from wallet_v2.api.deps import get_mcp_client, get_session
 from wallet_v2.api.schemas import (
@@ -40,11 +40,32 @@ from wallet_v2.persistence.models import (
     TransactionObservation,
 )
 from wallet_v2.persistence.models.mcp import AdvisoryResearch, EnrichmentDecision
+from wallet_v2.persistence.models.source_message import SourceMessage
 
 router = APIRouter(prefix="/enrichment", tags=["enrichment"])
 
 
 # ── view builders ────────────────────────────────────────────────────────
+
+
+def _candidate_source_info(research: AdvisoryResearch) -> dict[str, object]:
+    candidate = research.candidate
+    if candidate is None:
+        return {}
+    source_msg = candidate.source_message
+    metadata = source_msg.content_metadata if source_msg is not None else None
+    return {
+        "merchant": candidate.merchant,
+        "reference": candidate.reference,
+        "amount_minor": candidate.amount_minor,
+        "currency": candidate.currency,
+        "direction": candidate.direction.value if candidate.direction else None,
+        "transaction_date": candidate.transaction_date,
+        "candidate_status": candidate.status.value if candidate.status else None,
+        "sender": metadata.sender if metadata else None,
+        "subject": metadata.subject if metadata else None,
+        "source_date": metadata.sent_at if metadata else None,
+    }
 
 
 def _evidence_records(research: AdvisoryResearch) -> list[EvidenceRecordView]:
@@ -74,6 +95,7 @@ def _evidence_records(research: AdvisoryResearch) -> list[EvidenceRecordView]:
 
 def _research_to_view(research: AdvisoryResearch) -> CandidateResearchView:
     query_inputs = research.query_inputs or {}
+    source = _candidate_source_info(research)
     return CandidateResearchView(
         candidate_id=str(research.candidate_id),
         evidence_grade=research.evidence_grade,
@@ -87,6 +109,16 @@ def _research_to_view(research: AdvisoryResearch) -> CandidateResearchView:
         query_inputs=research.query_inputs,
         response_metadata=research.response_metadata,
         evidence=_evidence_records(research),
+        merchant=source.get("merchant"),
+        reference=source.get("reference"),
+        amount_minor=source.get("amount_minor"),
+        currency=source.get("currency"),
+        direction=source.get("direction"),
+        transaction_date=source.get("transaction_date"),
+        candidate_status=source.get("candidate_status"),
+        sender=source.get("sender"),
+        subject=source.get("subject"),
+        source_date=source.get("source_date"),
     )
 
 
@@ -137,6 +169,24 @@ def _next_version(session: Session, event_id: UUID) -> int:
 # ── candidate advisory research (read-only, never finalizable) ───────────
 
 
+@router.get("/candidates", response_model=list[CandidateResearchView])
+def list_candidate_research(
+    session: Session = Depends(get_session),
+) -> list[CandidateResearchView]:
+    """List all notification candidate research, newest first."""
+    rows = session.scalars(
+        select(AdvisoryResearch)
+        .options(
+            joinedload(AdvisoryResearch.candidate)
+            .joinedload(TransactionCandidate.source_message)
+            .joinedload(SourceMessage.content_metadata),
+        )
+        .where(AdvisoryResearch.candidate_id.is_not(None))
+        .order_by(AdvisoryResearch.created_at.desc())
+    ).unique().all()
+    return [_research_to_view(r) for r in rows]
+
+
 @router.get("/candidates/{candidate_id}", response_model=CandidateResearchView)
 def get_candidate_research(
     candidate_id: UUID,
@@ -169,6 +219,11 @@ def list_candidate_research_by_account(
 
     rows = session.scalars(
         select(AdvisoryResearch)
+        .options(
+            joinedload(AdvisoryResearch.candidate)
+            .joinedload(TransactionCandidate.source_message)
+            .joinedload(SourceMessage.content_metadata),
+        )
         .join(
             TransactionCandidate,
             AdvisoryResearch.candidate_id == TransactionCandidate.id,
@@ -179,7 +234,7 @@ def list_candidate_research_by_account(
         )
         .where(TransactionObservation.account_id == account_id)
         .order_by(AdvisoryResearch.created_at.desc())
-    ).all()
+    ).unique().all()
     return [_research_to_view(r) for r in rows]
 
 

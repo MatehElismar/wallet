@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PushInitScript } from "./push-init";
+import { NavBar } from "./nav-bar";
 
 export const metadata: Metadata = {
   title: "Wallet V2 Reconciliation",
@@ -44,6 +45,7 @@ export default function RootLayout({
           <div className="container">
             <h1>Wallet V2</h1>
           </div>
+          <NavBar />
         </header>
         <main className="container">{children}</main>
       </body>

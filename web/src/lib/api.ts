@@ -190,6 +190,16 @@ export interface CandidateResearch {
   query_inputs: Record<string, unknown> | null;
   response_metadata: Record<string, unknown> | null;
   evidence: EvidenceRecord[];
+  merchant: string | null;
+  reference: string | null;
+  amount_minor: number | null;
+  currency: string | null;
+  direction: string | null;
+  transaction_date: string | null;
+  candidate_status: string | null;
+  sender: string | null;
+  subject: string | null;
+  source_date: string | null;
 }
 
 export interface EventEnrichment {
@@ -230,6 +240,10 @@ export async function getCandidateResearch(
   candidateId: string
 ): Promise<CandidateResearch> {
   return fetchJSON(`/enrichment/candidates/${candidateId}`);
+}
+
+export async function listCandidates(): Promise<CandidateResearch[]> {
+  return fetchJSON("/enrichment/candidates");
 }
 
 export async function listCandidateResearchByAccount(
