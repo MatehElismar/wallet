@@ -193,6 +193,17 @@ class CandidateResearchView(BaseModel):
     query_inputs: dict[str, object] | None = None
     response_metadata: dict[str, object] | None = None
     evidence: list[EvidenceRecordView] = Field(default_factory=list)
+    # ── candidate source fields (for inbox / detail views) ────────────────
+    merchant: str | None = None
+    reference: str | None = None
+    amount_minor: int | None = None
+    currency: str | None = None
+    direction: str | None = None
+    transaction_date: date | None = None
+    candidate_status: str | None = None
+    sender: str | None = None
+    subject: str | None = None
+    source_date: datetime | None = None
 
 
 class EventEnrichmentView(BaseModel):
