@@ -200,11 +200,21 @@ def get_candidate_research(
         .where(AdvisoryResearch.candidate_id == candidate_id)
         .order_by(AdvisoryResearch.created_at.desc())
     )
-    if research is None:
-        raise HTTPException(
-            status_code=404, detail="no advisory research for candidate"
-        )
-    return _research_to_view(research)
+    if research is None and mcp_client is not None:
+        try:
+            svc = EnrichmentService(session, mcp_client)
+            svc.build_candidate_advisory_research(candidate)
+            session.commit()
+            research = session.scalar(
+                select(AdvisoryResearch)
+                .where(AdvisoryResearch.candidate_id == candidate_id)
+                .order_by(AdvisoryResearch.created_at.desc())
+            )
+        except Exception:
+            pass
+    if research is not None:
+        return _research_to_view(research)
+    return _candidate_to_view(candidate)
 
 
 @router.get(

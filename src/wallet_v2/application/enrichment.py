@@ -590,7 +590,7 @@ class EnrichmentService:
             return self._no_rec_candidate(
                 candidate, profile_snapshot, str(exc)
             )
-        account_id = candidate.account_id
+        account_id = candidate.observation.account_id if candidate.observation else None
         if account_id is None:
             return self._no_rec_candidate(
                 candidate, profile_snapshot,
