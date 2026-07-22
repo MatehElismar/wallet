@@ -540,15 +540,22 @@ def _build_settings(env: Mapping[str, str]) -> Settings:
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     """Load settings from environment variables.
 
-    By default reads from :data:`os.environ`. Tests should pass an explicit
-    mapping to keep themselves hermetic.
+    By default reads from :data:`os.environ` and loads a local ``.env`` file if
+    present. Tests should pass an explicit mapping to keep themselves hermetic.
 
     Raises:
         ConfigError: if any required value is missing or any integration
             whose mode is not ``disabled`` is incompletely configured.
     """
 
-    source: Mapping[str, str] = (
-        MappingProxyType(os.environ) if env is None else env
-    )
+    if env is None:
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            try:
+                from dotenv import load_dotenv
+                load_dotenv()
+            except ImportError:
+                pass
+        source: Mapping[str, str] = MappingProxyType(os.environ)
+    else:
+        source = env
     return _build_settings(source)
