@@ -23,8 +23,77 @@ from wallet_v2.persistence.models.wallet_catalog import (
 )
 
 
+import re
+from dataclasses import dataclass
+
+
 class MappingError(ValueError):
     """Raised when a requested mapping violates policy or validation."""
+
+
+@dataclass(frozen=True)
+class AccountMatchCandidate:
+    remote_account_id: str
+    name: str
+    score: float
+
+
+def score_account_match(
+    issuer: str, external_reference: str, item_name: str
+) -> float:
+    """Fuzzy match score (0.0 to 1.0) between extracted bank info and a Wallet account name."""
+    if not item_name:
+        return 0.0
+    item_clean = item_name.casefold()
+    issuer_clean = issuer.casefold()
+    ref_clean = external_reference.casefold()
+
+    ref_digits = re.findall(r"\d{3,4}", ref_clean)
+    score = 0.0
+    if ref_digits:
+        for d in ref_digits:
+            if d in item_clean:
+                score += 0.5
+                break
+    else:
+        ref_words = [w for w in re.split(r"\W+", ref_clean) if len(w) >= 2]
+        if ref_words and any(w in item_clean for w in ref_words):
+            score += 0.4
+
+    issuer_words = [w for w in re.split(r"\W+", issuer_clean) if len(w) >= 2]
+    issuer_words = [w for w in issuer_words if w not in {"banco", "bank"}]
+    if issuer_words and any(w in item_clean for w in issuer_words):
+        score += 0.5
+    elif issuer_clean in item_clean or item_clean in issuer_clean:
+        score += 0.3
+
+    return min(score, 1.0)
+
+
+def find_catalog_account_matches(
+    items: list[dict[str, Any]],
+    issuer: str,
+    external_reference: str,
+) -> list[AccountMatchCandidate]:
+    candidates: list[AccountMatchCandidate] = []
+    for item in items:
+        if item.get("archived"):
+            continue
+        item_id = item.get("id")
+        if isinstance(item_id, WalletCatalogRef):
+            item_id = item_id.id
+        name = str(item.get("name") or item.get("title") or "")
+        if not item_id or not name:
+            continue
+        score = score_account_match(issuer, external_reference, name)
+        if score > 0.3:
+            candidates.append(
+                AccountMatchCandidate(
+                    remote_account_id=str(item_id), name=name, score=score
+                )
+            )
+    candidates.sort(key=lambda c: c.score, reverse=True)
+    return candidates
 
 
 def _check_not_archived(
@@ -180,6 +249,39 @@ class AccountMappingService:
                 "Financial account has no active validated mapping"
             )
         return mapping.remote_account_id
+
+    def auto_map_if_matching(
+        self,
+        financial_account_id: object,
+        issuer: str,
+        external_reference: str,
+        threshold: float = 0.75,
+    ) -> AccountMapping | None:
+        """Attempt to automatically infer and map a financial account from current catalog snapshot."""
+        if self.get_active_mapping(financial_account_id) is not None:
+            return None
+
+        cursor = self._session.scalar(
+            select(CatalogSyncCursor).where(
+                CatalogSyncCursor.resource_kind == "accounts"
+            )
+        )
+        if cursor is None or not cursor.current_snapshot_id:
+            return None
+        snapshot = self._session.get(CatalogSyncSnapshot, cursor.current_snapshot_id)
+        if snapshot is None or not snapshot.catalog_data:
+            return None
+        items: list[dict[str, Any]] = snapshot.catalog_data.get("items") or []
+        matches = find_catalog_account_matches(items, issuer, external_reference)
+        if matches and matches[0].score >= threshold:
+            best = matches[0]
+            if len(matches) == 1 or (matches[0].score - matches[1].score >= 0.15):
+                return self.create_mapping(
+                    financial_account_id=financial_account_id,
+                    remote_account_id=best.remote_account_id,
+                    snapshot_id=snapshot.id,
+                )
+        return None
 
     @staticmethod
     def _resolve_account_id(item: dict[str, Any]) -> str:

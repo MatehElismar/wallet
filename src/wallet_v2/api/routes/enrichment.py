@@ -57,14 +57,16 @@ def _candidate_source_info(research: AdvisoryResearch) -> dict[str, object]:
         return {}
     source_msg = candidate.source_message
     metadata = source_msg.content_metadata if source_msg is not None else None
+    direction_val = candidate.direction.value if hasattr(candidate.direction, "value") else candidate.direction
+    status_val = candidate.status.value if hasattr(candidate.status, "value") else candidate.status
     return {
         "merchant": candidate.merchant,
         "reference": candidate.reference,
         "amount_minor": candidate.amount_minor,
         "currency": candidate.currency,
-        "direction": candidate.direction.value if candidate.direction else None,
+        "direction": direction_val,
         "transaction_date": candidate.transaction_date,
-        "candidate_status": candidate.status.value if candidate.status else None,
+        "candidate_status": status_val,
         "sender": metadata.sender if metadata else None,
         "subject": metadata.subject if metadata else None,
         "source_date": metadata.sent_at if metadata else None,
@@ -189,6 +191,35 @@ def _next_line_version(session: Session, line_id: UUID) -> int:
     return (current or 0) + 1
 
 
+def _candidate_to_view(candidate: TransactionCandidate) -> CandidateResearchView:
+    source_msg = candidate.source_message
+    metadata = source_msg.content_metadata if source_msg is not None else None
+    direction_val = candidate.direction.value if hasattr(candidate.direction, "value") else candidate.direction
+    status_val = candidate.status.value if hasattr(candidate.status, "value") else candidate.status
+    return CandidateResearchView(
+        candidate_id=str(candidate.id),
+        evidence_grade="pending",
+        recommendation=False,
+        is_finalizable=False,
+        selected_account_id=None,
+        rationale="Advisory research pending",
+        integrity_hash=None,
+        query_inputs=None,
+        response_metadata=None,
+        evidence=[],
+        merchant=candidate.merchant,
+        reference=candidate.reference,
+        amount_minor=candidate.amount_minor,
+        currency=candidate.currency,
+        direction=direction_val,
+        transaction_date=candidate.transaction_date,
+        candidate_status=status_val,
+        sender=metadata.sender if metadata else None,
+        subject=metadata.subject if metadata else None,
+        source_date=metadata.sent_at if metadata else None,
+    )
+
+
 # ── candidate advisory research (read-only, never finalizable) ───────────
 
 
@@ -196,24 +227,34 @@ def _next_line_version(session: Session, line_id: UUID) -> int:
 def list_candidate_research(
     session: Session = Depends(get_session),
 ) -> list[CandidateResearchView]:
-    """List all notification candidate research, newest first."""
-    rows = session.scalars(
-        select(AdvisoryResearch)
+    """List all notification candidates and their advisory research, newest first."""
+    candidates = session.scalars(
+        select(TransactionCandidate)
         .options(
-            joinedload(AdvisoryResearch.candidate)
-            .joinedload(TransactionCandidate.source_message)
+            joinedload(TransactionCandidate.source_message)
             .joinedload(SourceMessage.content_metadata),
         )
-        .where(AdvisoryResearch.candidate_id.is_not(None))
-        .order_by(AdvisoryResearch.created_at.desc())
+        .order_by(TransactionCandidate.created_at.desc())
     ).unique().all()
-    return [_research_to_view(r) for r in rows]
+    out: list[CandidateResearchView] = []
+    for cand in candidates:
+        research = session.scalar(
+            select(AdvisoryResearch)
+            .where(AdvisoryResearch.candidate_id == cand.id)
+            .order_by(AdvisoryResearch.created_at.desc())
+        )
+        if research is not None:
+            out.append(_research_to_view(research))
+        else:
+            out.append(_candidate_to_view(cand))
+    return out
 
 
 @router.get("/candidates/{candidate_id}", response_model=CandidateResearchView)
 def get_candidate_research(
     candidate_id: UUID,
     session: Session = Depends(get_session),
+    mcp_client: McpReadOnlyClient | None = Depends(get_mcp_client),
 ) -> CandidateResearchView:
     candidate = session.get(TransactionCandidate, candidate_id)
     if candidate is None:
@@ -223,11 +264,21 @@ def get_candidate_research(
         .where(AdvisoryResearch.candidate_id == candidate_id)
         .order_by(AdvisoryResearch.created_at.desc())
     )
-    if research is None:
-        raise HTTPException(
-            status_code=404, detail="no advisory research for candidate"
-        )
-    return _research_to_view(research)
+    if research is None and mcp_client is not None:
+        try:
+            svc = EnrichmentService(session, mcp_client)
+            svc.build_candidate_advisory_research(candidate)
+            session.commit()
+            research = session.scalar(
+                select(AdvisoryResearch)
+                .where(AdvisoryResearch.candidate_id == candidate_id)
+                .order_by(AdvisoryResearch.created_at.desc())
+            )
+        except Exception:
+            pass
+    if research is not None:
+        return _research_to_view(research)
+    return _candidate_to_view(candidate)
 
 
 @router.get(

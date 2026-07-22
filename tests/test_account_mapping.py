@@ -572,3 +572,54 @@ class TestWalletWorkflowImportUsesValidatedMapping:
         session.add(event)
         session.flush()
         return event
+
+
+class TestFuzzyAccountMatching:
+    """Test fuzzy account catalog inferencing and auto-mapping."""
+
+    def test_score_account_match(self) -> None:
+        from wallet_v2.application.account_mapping import score_account_match
+
+        # Issuer + last 4 digits match
+        assert score_account_match("Popular", "CC 2727", "Popular CC 2727") == 1.0
+        assert score_account_match("Banco Santa Cruz", "Visa 5678", "Santa Cruz Visa 5678") >= 0.8
+        assert score_account_match("BHD", "Debito 1234", "BHD Debito 1234") == 1.0
+
+        # Unrelated account
+        assert score_account_match("Popular", "2727", "Qik Credit Card 2197") == 0.0
+
+    def test_auto_map_if_matching(self, session: Session) -> None:
+        from wallet_v2.application.account_mapping import AccountMappingService
+
+        # 1. Create a catalog snapshot containing "Popular CC 2727"
+        snapshot = CatalogSyncSnapshot(
+            resource_kind="accounts",
+            snapshot_version=1,
+            catalog_data={
+                "items": [
+                    {"id": "wa-popular-2727", "name": "Popular CC 2727", "archived": False},
+                    {"id": "wa-bhd-1234", "name": "BHD Debito 1234", "archived": False},
+                ]
+            },
+        )
+        session.add(snapshot)
+        session.flush()
+        cursor = CatalogSyncCursor(
+            resource_kind="accounts",
+            current_snapshot_id=snapshot.id,
+            last_synced_at=_utcnow(),
+        )
+        session.add(cursor)
+        session.flush()
+
+        # 2. Instantiate workflow and create financial account for Popular CC 2727
+        wf = WalletWorkflow(session)
+        acct = wf._find_or_create_account(issuer="Popular", external_reference="CC 2727")
+        session.commit()
+
+        # 3. Assert active mapping was created automatically
+        mapping_svc = AccountMappingService(session)
+        mapping = mapping_svc.get_active_mapping(acct.id)
+        assert mapping is not None
+        assert mapping.remote_account_id == "wa-popular-2727"
+

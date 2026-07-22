@@ -384,6 +384,13 @@ class WalletWorkflow:
             )
             self.session.add(account)
             self.session.flush()
+
+        try:
+            mapping_svc = AccountMappingService(self.session)
+            mapping_svc.auto_map_if_matching(account.id, issuer, external_reference)
+        except Exception:
+            pass
+
         return account
 
     def _propose_reconciliation(self, line: BankStatementLine) -> ReconciliationLink:
