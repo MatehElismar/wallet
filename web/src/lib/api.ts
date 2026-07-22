@@ -140,7 +140,11 @@ export async function mapAccount(
 
 export async function approveBatch(
   batchId: string,
-  body: { reviewer_id: string; note?: string }
+  body: {
+    reviewer_id: string;
+    note?: string;
+    enrichment_overrides?: Record<string, OverrideDecisionBody>;
+  }
 ): Promise<{
   batch_id: string;
   event_count: number;
@@ -203,7 +207,8 @@ export interface CandidateResearch {
 }
 
 export interface EventEnrichment {
-  event_id: string;
+  line_id?: string | null;
+  event_id?: string | null;
   version: number;
   evidence_grade: string;
   recommendation: boolean;
@@ -250,6 +255,30 @@ export async function listCandidateResearchByAccount(
   accountId: string
 ): Promise<CandidateResearch[]> {
   return fetchJSON(`/enrichment/candidates/account/${accountId}`);
+}
+
+export async function generateBatchProposals(
+  batchId: string
+): Promise<EventEnrichment[]> {
+  return fetchJSON(`/enrichment/batches/${batchId}/generate-proposals`, {
+    method: "POST",
+  });
+}
+
+export async function getLineEnrichment(
+  lineId: string
+): Promise<EventEnrichment> {
+  return fetchJSON(`/enrichment/lines/${lineId}`);
+}
+
+export async function overrideLineDecision(
+  lineId: string,
+  body: OverrideDecisionBody
+): Promise<EventEnrichment> {
+  return fetchJSON(`/enrichment/lines/${lineId}/override`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function getEventEnrichment(

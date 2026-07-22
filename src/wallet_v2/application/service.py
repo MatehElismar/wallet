@@ -17,6 +17,7 @@ from wallet_v2.application.contracts import (
     TransactionExtractor,
     WalletClient,
 )
+from wallet_v2.application.enrichment import EnrichmentService
 from wallet_v2.application.outbox import OutboxService
 from wallet_v2.domain.notifications import NotificationIntent
 from wallet_v2.domain.reference import canonical_external_reference
@@ -41,6 +42,7 @@ from wallet_v2.persistence.models import (
     AuditEvent,
     BankStatement,
     BankStatementLine,
+    EnrichmentDecision,
     ExecutionRun,
     FinancialAccount,
     FinancialEvent,
@@ -519,6 +521,7 @@ class WalletWorkflow:
         batch: StatementReviewBatch,
         reviewer_id: str,
         note: str | None = None,
+        enrichment_overrides: dict[str, object] | None = None,
     ) -> tuple[FinancialEvent, ...]:
         """Approve a reconciled statement as one bulk decision.
 
@@ -534,6 +537,7 @@ class WalletWorkflow:
             raise WorkflowError("every statement line requires a reconciliation resolution")
         if any(line.resolution and line.resolution.outcome == ReconciliationOutcome.AMBIGUOUS for line in lines):
             raise WorkflowError("ambiguous statement lines require manual resolution")
+        enrichment_service = EnrichmentService(self.session)
         events: list[FinancialEvent] = []
         for line in lines:
             resolution = line.resolution
@@ -564,6 +568,41 @@ class WalletWorkflow:
                 ),
             )
             self.session.add(event)
+            self.session.flush()
+
+            # Process enrichment override if provided for this line
+            line_key = str(line.id)
+            if enrichment_overrides and line_key in enrichment_overrides:
+                override_data = enrichment_overrides[line_key]
+                if isinstance(override_data, dict):
+                    acc_id = override_data.get("account_id")
+                    cat_id = override_data.get("category_id")
+                    lbl_ids = override_data.get("label_ids") or []
+                    pay_type = override_data.get("payment_type")
+                else:
+                    acc_id = getattr(override_data, "account_id")
+                    cat_id = getattr(override_data, "category_id", None)
+                    lbl_ids = getattr(override_data, "label_ids", [])
+                    pay_type = getattr(override_data, "payment_type", None)
+                enrichment_service.override_decision(
+                    event,
+                    account_id=acc_id,
+                    category_id=cat_id,
+                    label_ids=lbl_ids,
+                    payment_type=pay_type,
+                )
+
+            # Finalize corresponding enrichment decision if present
+            latest_dec = self.session.scalar(
+                select(EnrichmentDecision)
+                .where(EnrichmentDecision.statement_line_id == line.id)
+                .order_by(EnrichmentDecision.version.desc())
+            )
+            if latest_dec is not None:
+                enrichment_service.finalize_decision(
+                    line, version=latest_dec.version, event=event
+                )
+
             events.append(event)
         batch.state = "approved"
         batch.reviewer_id = reviewer_id

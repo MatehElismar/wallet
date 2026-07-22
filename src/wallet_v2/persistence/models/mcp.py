@@ -31,11 +31,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from wallet_v2.persistence.base import Base, Immutable, Timestamped
+from wallet_v2.persistence.models.reconciliation import (
+    BankStatementLine,
+    FinancialEvent,
+)
 from wallet_v2.persistence.types import JSONB
 
 if TYPE_CHECKING:
     from wallet_v2.persistence.models.candidate import TransactionCandidate
-    from wallet_v2.persistence.models.reconciliation import FinancialEvent
 
 
 class McpProfileSnapshot(Base, Immutable):
@@ -135,19 +138,19 @@ class AdvisoryResearch(Base, Timestamped):
 
 
 class EnrichmentDecision(Base, Immutable):
-    """A versioned, immutable enrichment proposal for a canonical event.
+    """A versioned, immutable enrichment proposal for a statement line or event.
 
-    One ``FinancialEvent`` may have multiple proposal versions (inserted
-    on re-enrichment). Only one row may have ``finalized=True`` per event,
-    enforced by a PostgreSQL partial unique index.
+    One statement line may have multiple proposal versions (inserted on
+    re-enrichment or operator override). Only one row may have ``finalized=True``
+    per statement line, enforced by a partial unique index.
     """
 
     __tablename__ = "enrichment_decisions"
     __table_args__ = (
         UniqueConstraint(
-            "financial_event_id",
+            "statement_line_id",
             "version",
-            name="uq_enrichment_decisions_event_version",
+            name="uq_enrichment_decisions_line_version",
         ),
         CheckConstraint(
             "version >= 1",
@@ -163,7 +166,7 @@ class EnrichmentDecision(Base, Immutable):
         ),
         Index(
             "uq_enrichment_decisions_one_finalized",
-            "financial_event_id",
+            "statement_line_id",
             unique=True,
             postgresql_where="finalized IS TRUE",
             sqlite_where=text("finalized IS TRUE"),
@@ -171,9 +174,14 @@ class EnrichmentDecision(Base, Immutable):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    financial_event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("financial_events.id", ondelete="RESTRICT"),
+    statement_line_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("bank_statement_lines.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
+    )
+    financial_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("financial_events.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -204,3 +212,10 @@ class EnrichmentDecision(Base, Immutable):
         JSONB(), nullable=True
     )
     finalized: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    statement_line: Mapped["BankStatementLine"] = relationship(
+        foreign_keys=[statement_line_id],
+    )
+    financial_event: Mapped["FinancialEvent | None"] = relationship(
+        foreign_keys=[financial_event_id],
+    )

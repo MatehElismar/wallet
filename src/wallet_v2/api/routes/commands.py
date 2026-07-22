@@ -18,6 +18,7 @@ from wallet_v2.api.schemas import (
     ResolveLineRequest,
     ResolveLineResponse,
 )
+from wallet_v2.application.enrichment import CatalogValidationError
 from wallet_v2.application.service import WorkflowError, WalletWorkflow
 from wallet_v2.domain.enums import IntegrationMode, ReconciliationOutcome
 from wallet_v2.persistence.models import (
@@ -38,17 +39,21 @@ def _start_command_run(session: Session) -> tuple[WalletWorkflow, ExecutionRun]:
         mode=IntegrationMode.DRY_RUN,
         trigger="manual",
         label="operator-console",
-        initiator="unauthenticated",
     )
     return workflow, run
 
 
-def _finish_command_run(wf: WalletWorkflow, run: ExecutionRun, outcome: str, error: str | None = None) -> None:
-    wf.finish_run(run, outcome=outcome, error=error)
+def _finish_command_run(
+    workflow: WalletWorkflow,
+    run: ExecutionRun,
+    outcome: str,
+    error: str | None = None,
+) -> None:
+    workflow.finish_run(run, outcome=outcome, error=error)
 
 
-def _enum_val(field: object) -> str:
-    return field.value if hasattr(field, "value") else str(field)
+def _enum_val(obj: object) -> str:
+    return getattr(obj, "value", str(obj))
 
 
 def _event_to_view(event: FinancialEvent) -> FinancialEventView:
@@ -74,20 +79,20 @@ def resolve_line(
     line = session.get(BankStatementLine, line_id)
     if line is None:
         raise HTTPException(status_code=404, detail="statement line not found")
-    try:
-        outcome = ReconciliationOutcome(body.outcome)
-    except ValueError:
-        raise HTTPException(
-            status_code=422,
-            detail=f"invalid outcome: {body.outcome!r}; must be new, matched, ambiguous, or ignored",
-        )
     observation = None
     if body.observation_id is not None:
         observation = session.get(TransactionObservation, body.observation_id)
         if observation is None:
-            raise HTTPException(status_code=422, detail="observation not found")
+            raise HTTPException(status_code=404, detail="observation not found")
     wf, run = _start_command_run(session)
     sp = session.begin_nested()
+    try:
+        outcome = ReconciliationOutcome(body.outcome)
+    except ValueError as exc:
+        sp.rollback()
+        _finish_command_run(wf, run, "failed", str(exc))
+        session.commit()
+        raise HTTPException(status_code=422, detail=str(exc))
     try:
         link = wf.resolve_statement_line(
             run=run,
@@ -156,8 +161,9 @@ def approve_batch(
             batch=batch,
             reviewer_id=body.reviewer_id,
             note=body.note,
+            enrichment_overrides=body.enrichment_overrides,
         )
-    except WorkflowError as exc:
+    except (WorkflowError, ValueError, CatalogValidationError) as exc:
         sp.rollback()
         _finish_command_run(wf, run, "failed", str(exc))
         session.commit()

@@ -134,6 +134,7 @@ class MapAccountResponse(BaseModel):
 class ApproveBatchRequest(BaseModel):
     reviewer_id: str = Field(min_length=1, max_length=128)
     note: str | None = None
+    enrichment_overrides: dict[str, OverrideDecisionRequest] | None = None
 
 
 class ApproveBatchResponse(BaseModel):
@@ -207,9 +208,10 @@ class CandidateResearchView(BaseModel):
 
 
 class EventEnrichmentView(BaseModel):
-    """The current (latest-version) enrichment decision for a canonical event."""
+    """The current (latest-version) enrichment decision for a line item or canonical event."""
 
-    event_id: str
+    line_id: str | None = None
+    event_id: str | None = None
     version: int
     evidence_grade: str
     recommendation: bool

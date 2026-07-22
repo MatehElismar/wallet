@@ -9,8 +9,11 @@ import {
   approveBatch,
   dryRunImport,
   getEventEnrichment,
+  getLineEnrichment,
+  generateBatchProposals,
   generateEventDecision,
   overrideEventDecision,
+  overrideLineDecision,
   finalizeEventDecision,
   getDryRunPreview,
   listCandidateResearchByAccount,
@@ -23,6 +26,7 @@ import type {
   EventEnrichment,
   CandidateResearch,
   DryRunRecordPreview,
+  OverrideDecisionBody,
 } from "@/lib/api";
 import { CandidateResearchCard, GRADE_LABEL } from "../../candidate-research-card";
 
@@ -62,11 +66,15 @@ export default function BatchDetailPage() {
 
   const [approveReviewer, setApproveReviewer] = useState("operator");
   const [approving, setApproving] = useState(false);
+  const [generatingProposals, setGeneratingProposals] = useState(false);
   const [dryRunResults, setDryRunResults] = useState<DryRunResult[]>([]);
   const [approvedEvents, setApprovedEvents] = useState<FinancialEventView[]>([]);
 
-  const [enrichmentByEvent, setEnrichmentByEvent] = useState<
+  const [enrichmentByLine, setEnrichmentByLine] = useState<
     Record<string, EventEnrichment | null>
+  >({});
+  const [overridesByLine, setOverridesByLine] = useState<
+    Record<string, OverrideDecisionBody>
   >({});
   const [candidateResearch, setCandidateResearch] = useState<CandidateResearch[]>(
     []
@@ -91,21 +99,18 @@ export default function BatchDetailPage() {
 
   useEffect(() => {
     if (!batch) return;
-    const eventIds = batch.lines
-      .map((l) => l.event_id)
-      .filter((id): id is string => Boolean(id));
-    if (eventIds.length === 0 && !batch.account) return;
+    // Fetch line enrichment for each statement line
     Promise.all(
-      eventIds.map((id) =>
-        getEventEnrichment(id)
-          .then((e) => [id, e] as const)
-          .catch(() => [id, null] as const)
+      batch.lines.map((l) =>
+        (l.event_id ? getEventEnrichment(l.event_id) : getLineEnrichment(l.line_id))
+          .then((e) => [l.line_id, e] as const)
+          .catch(() => [l.line_id, null] as const)
       )
     )
       .then((pairs) => {
         const next: Record<string, EventEnrichment | null> = {};
-        for (const [id, e] of pairs) next[id] = e;
-        setEnrichmentByEvent(next);
+        for (const [lineId, e] of pairs) next[lineId] = e;
+        setEnrichmentByLine(next);
       })
       .catch(() => {});
     if (batch.account) {
@@ -115,34 +120,65 @@ export default function BatchDetailPage() {
     }
   }, [batch]);
 
-  const refreshEnrichment = (eventId: string) => {
-    getEventEnrichment(eventId)
+  const refreshLineEnrichment = (lineId: string, eventId?: string | null) => {
+    (eventId ? getEventEnrichment(eventId) : getLineEnrichment(lineId))
       .then((e) =>
-        setEnrichmentByEvent((prev) => ({ ...prev, [eventId]: e }))
+        setEnrichmentByLine((prev) => ({ ...prev, [lineId]: e }))
       )
       .catch(() =>
-        setEnrichmentByEvent((prev) => ({ ...prev, [eventId]: null }))
+        setEnrichmentByLine((prev) => ({ ...prev, [lineId]: null }))
       );
   };
 
-  const handleGenerate = async (eventId: string) => {
+  const handleGenerateBatchProposals = async () => {
+    setEnrichActionError(null);
+    setGeneratingProposals(true);
+    try {
+      const proposals = await generateBatchProposals(batchId);
+      const next: Record<string, EventEnrichment | null> = { ...enrichmentByLine };
+      for (const p of proposals) {
+        if (p.line_id) next[p.line_id] = p;
+      }
+      setEnrichmentByLine(next);
+    } catch (err: unknown) {
+      setEnrichActionError(err instanceof Error ? err.message : "Generate batch proposals failed");
+    } finally {
+      setGeneratingProposals(false);
+    }
+  };
+
+  const handleGenerate = async (targetId: string) => {
     setEnrichActionError(null);
     try {
-      await generateEventDecision(eventId);
-      refreshEnrichment(eventId);
+      const line = batch?.lines.find((l) => l.line_id === targetId || l.event_id === targetId);
+      if (line && line.event_id) {
+        await generateEventDecision(line.event_id);
+        refreshLineEnrichment(line.line_id, line.event_id);
+      } else {
+        await handleGenerateBatchProposals();
+      }
     } catch (err: unknown) {
       setEnrichActionError(err instanceof Error ? err.message : "Generate failed");
     }
   };
 
   const handleOverride = async (
-    eventId: string,
-    body: { account_id: string; category_id: string | null; label_ids: string[]; payment_type: string | null }
+    targetId: string,
+    body: OverrideDecisionBody
   ) => {
     setEnrichActionError(null);
     try {
-      await overrideEventDecision(eventId, body);
-      refreshEnrichment(eventId);
+      // Check if targetId is an event_id or line_id
+      const line = batch?.lines.find((l) => l.line_id === targetId || l.event_id === targetId);
+      if (line && !line.event_id) {
+        const updated = await overrideLineDecision(line.line_id, body);
+        setEnrichmentByLine((prev) => ({ ...prev, [line.line_id]: updated }));
+        setOverridesByLine((prev) => ({ ...prev, [line.line_id]: body }));
+      } else if (line && line.event_id) {
+        const updated = await overrideEventDecision(line.event_id, body);
+        setEnrichmentByLine((prev) => ({ ...prev, [line.line_id]: updated }));
+        setOverridesByLine((prev) => ({ ...prev, [line.line_id]: body }));
+      }
     } catch (err: unknown) {
       setEnrichActionError(err instanceof Error ? err.message : "Override failed");
     }
@@ -152,7 +188,7 @@ export default function BatchDetailPage() {
     setEnrichActionError(null);
     try {
       await finalizeEventDecision(eventId);
-      refreshEnrichment(eventId);
+      refreshLineEnrichment(eventId, eventId);
     } catch (err: unknown) {
       setEnrichActionError(err instanceof Error ? err.message : "Finalize failed");
     }
@@ -250,8 +286,10 @@ export default function BatchDetailPage() {
     setActionError(null);
     setApproving(true);
     try {
+      const overridesMap = Object.keys(overridesByLine).length > 0 ? overridesByLine : undefined;
       const result = await approveBatch(batchId, {
         reviewer_id: approveReviewer,
+        enrichment_overrides: overridesMap,
       });
       setApprovedEvents(result.events);
       refresh();
@@ -385,9 +423,7 @@ export default function BatchDetailPage() {
           key={line.line_id}
           line={line}
           isApproved={isApproved}
-          enrichment={
-            line.event_id ? enrichmentByEvent[line.event_id] : undefined
-          }
+          enrichment={enrichmentByLine[line.line_id]}
           onResolve={(l) => {
             setResolveOutcome("new");
             setResolveObservationId("");
@@ -620,9 +656,9 @@ function LineItem({
   onResolve: (line: StatementLineView) => void;
   onDryRun: (event: FinancialEventView) => void;
   dryRunResult: DryRunResult | undefined;
-  onGenerate: (eventId: string) => void;
+  onGenerate: (targetId: string) => void;
   onOverride: (
-    eventId: string,
+    targetId: string,
     body: {
       account_id: string;
       category_id: string | null;
@@ -734,9 +770,11 @@ function LineItem({
           )}
         </div>
       )}
-      {isApproved && line.event_id && (
+      {(enrichment || isResolved) && (
         <EnrichmentCard
-          eventId={line.event_id}
+          targetId={line.event_id || line.line_id}
+          eventId={line.event_id || undefined}
+          isApproved={isApproved}
           enrichment={enrichment}
           onGenerate={onGenerate}
           onOverride={onOverride}
@@ -755,11 +793,11 @@ function LineItem({
 
 function OverrideForm({
   onOverride,
-  eventId,
+  targetId,
 }: {
-  eventId: string;
+  targetId: string;
   onOverride: (
-    eventId: string,
+    targetId: string,
     body: {
       account_id: string;
       category_id: string | null;
@@ -775,7 +813,7 @@ function OverrideForm({
 
   const submit = () => {
     if (!accountId.trim()) return;
-    onOverride(eventId, {
+    onOverride(targetId, {
       account_id: accountId.trim(),
       category_id: categoryId.trim() || null,
       label_ids: labels
@@ -822,25 +860,29 @@ function OverrideForm({
         disabled={!accountId.trim()}
         onClick={submit}
       >
-        Save override (new version)
+        Save override
       </button>
     </div>
   );
 }
 
 function EnrichmentCard({
+  targetId,
   eventId,
+  isApproved,
   enrichment,
   onGenerate,
   onOverride,
   onFinalize,
   onDryRunPreview,
 }: {
-  eventId: string;
+  targetId: string;
+  eventId?: string;
+  isApproved: boolean;
   enrichment?: EventEnrichment | null;
-  onGenerate: (eventId: string) => void;
+  onGenerate: (targetId: string) => void;
   onOverride: (
-    eventId: string,
+    targetId: string,
     body: {
       account_id: string;
       category_id: string | null;
@@ -861,6 +903,7 @@ function EnrichmentCard({
   const gradeText = grade ? (GRADE_LABEL[grade] ?? grade) : "Not generated";
 
   const handlePreview = async () => {
+    if (!eventId) return;
     const result = await onDryRunPreview(eventId);
     if (result) setPreview(result);
   };
@@ -878,7 +921,7 @@ function EnrichmentCard({
           <div className="card-subtitle" style={{ fontSize: "0.75rem" }}>
             Evidence grade: <strong>{gradeText}</strong>
             {enrichment && ` · v${enrichment.version}`}
-            {enrichment?.finalized && (
+            {(isApproved || enrichment?.finalized) && (
               <span className="badge badge-approved" style={{ marginLeft: "0.5rem" }}>
                 finalized
               </span>
@@ -887,10 +930,10 @@ function EnrichmentCard({
         </div>
       </div>
 
-      {!enrichment && (
+      {!enrichment && !isApproved && (
         <button
           className="btn-primary btn-small"
-          onClick={() => onGenerate(eventId)}
+          onClick={() => onGenerate(targetId)}
         >
           Generate proposal
         </button>
@@ -927,46 +970,47 @@ function EnrichmentCard({
           </div>
 
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <button
-              className="btn-primary btn-small"
-              disabled={!enrichment.can_finalize}
-              onClick={() => onFinalize(eventId)}
-              title={
-                enrichment.can_finalize
-                  ? "Finalize this decision"
-                  : "Only a recommendation/override can be finalized"
-              }
-            >
-              {enrichment.finalized ? "Finalized" : "Finalize"}
-            </button>
-            <button
-              className="btn-small"
-              onClick={() => setShowOverride((v) => !v)}
-            >
-              Override
-            </button>
+            {!isApproved && (
+              <button
+                className="btn-primary btn-small"
+                disabled={!enrichment.can_finalize}
+                onClick={() => eventId && onFinalize(eventId)}
+                title={
+                  enrichment.can_finalize
+                    ? "Finalize this decision"
+                    : "Only a recommendation/override can be finalized"
+                }
+              >
+                {enrichment.finalized ? "Finalized" : "Finalize"}
+              </button>
+            )}
+            {!isApproved && (
+              <button
+                className="btn-small"
+                onClick={() => setShowOverride((v) => !v)}
+              >
+                Override
+              </button>
+            )}
             <button
               className="btn-small"
               onClick={() => setShowEvidence((v) => !v)}
             >
               {showEvidence ? "Hide evidence" : "Evidence"}
             </button>
-            <button
-              className="btn-small"
-              disabled={!enrichment.finalized}
-              onClick={handlePreview}
-              title={
-                enrichment.finalized
-                  ? "Preview exact Wallet REST payload"
-                  : "Finalize first to preview the payload"
-              }
-            >
-              Dry-run preview
-            </button>
+            {isApproved && eventId && (
+              <button
+                className="btn-small"
+                onClick={handlePreview}
+                title="Preview exact Wallet REST payload"
+              >
+                Dry-run preview
+              </button>
+            )}
           </div>
 
-          {showOverride && (
-            <OverrideForm onOverride={onOverride} eventId={eventId} />
+          {showOverride && !isApproved && (
+            <OverrideForm onOverride={onOverride} targetId={targetId} />
           )}
 
           {showEvidence && (

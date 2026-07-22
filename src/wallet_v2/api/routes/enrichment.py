@@ -34,8 +34,11 @@ from wallet_v2.application.enrichment import (
     EnrichmentService,
     _FINALIZABLE_GRADES,
 )
+from wallet_v2.domain.enums import ReconciliationOutcome
 from wallet_v2.persistence.models import (
+    BankStatementLine,
     FinancialEvent,
+    StatementReviewBatch,
     TransactionCandidate,
     TransactionObservation,
 )
@@ -125,7 +128,8 @@ def _research_to_view(research: AdvisoryResearch) -> CandidateResearchView:
 def _decision_to_view(decision: EnrichmentDecision) -> EventEnrichmentView:
     provenance = decision.provenance or {}
     return EventEnrichmentView(
-        event_id=str(decision.financial_event_id),
+        line_id=str(decision.statement_line_id),
+        event_id=str(decision.financial_event_id) if decision.financial_event_id else None,
         version=decision.version,
         evidence_grade=decision.evidence_grade,
         recommendation=decision.evidence_grade in _FINALIZABLE_GRADES,
@@ -161,6 +165,25 @@ def _next_version(session: Session, event_id: UUID) -> int:
     current = session.scalar(
         select(func.max(EnrichmentDecision.version)).where(
             EnrichmentDecision.financial_event_id == event_id
+        )
+    )
+    return (current or 0) + 1
+
+
+def _latest_line_decision(
+    session: Session, line_id: UUID
+) -> EnrichmentDecision | None:
+    return session.scalar(
+        select(EnrichmentDecision)
+        .where(EnrichmentDecision.statement_line_id == line_id)
+        .order_by(EnrichmentDecision.version.desc())
+    )
+
+
+def _next_line_version(session: Session, line_id: UUID) -> int:
+    current = session.scalar(
+        select(func.max(EnrichmentDecision.version)).where(
+            EnrichmentDecision.statement_line_id == line_id
         )
     )
     return (current or 0) + 1
@@ -398,3 +421,90 @@ def dry_run_record_preview(
         payload=payload,
         catalog_snapshot_ids=decision.catalog_snapshot_ids,
     )
+
+
+# ── batch & line pre-enrichment proposals ─────────────────────────────────
+
+
+@router.post(
+    "/batches/{batch_id}/generate-proposals",
+    response_model=list[EventEnrichmentView],
+)
+def generate_batch_proposals(
+    batch_id: UUID,
+    session: Session = Depends(get_session),
+    mcp=Depends(get_mcp_client),
+) -> list[EventEnrichmentView]:
+    """Generate pre-enrichment proposals for every resolved line in the batch."""
+    batch = session.get(StatementReviewBatch, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="batch not found")
+    if mcp is None:
+        raise HTTPException(
+            status_code=503, detail="MCP advisory integration is disabled"
+        )
+    service = EnrichmentService(session, mcp)
+    statement = batch.statement
+    decisions = []
+    for line in statement.lines:
+        if line.resolution and line.resolution.outcome != ReconciliationOutcome.AMBIGUOUS:
+            version = _next_line_version(session, line.id)
+            decision = service.build_line_decision(line, version=version)
+            decisions.append(decision)
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="enrichment proposal version conflict; retry",
+        ) from exc
+    return [_decision_to_view(d) for d in decisions]
+
+
+@router.get("/lines/{line_id}", response_model=EventEnrichmentView)
+def get_line_enrichment(
+    line_id: UUID,
+    session: Session = Depends(get_session),
+) -> EventEnrichmentView:
+    line = session.get(BankStatementLine, line_id)
+    if line is None:
+        raise HTTPException(status_code=404, detail="statement line not found")
+    decision = _latest_line_decision(session, line_id)
+    if decision is None:
+        raise HTTPException(
+            status_code=404, detail="no enrichment proposal for statement line"
+        )
+    return _decision_to_view(decision)
+
+
+@router.post("/lines/{line_id}/override", response_model=EventEnrichmentView)
+def override_line_decision(
+    line_id: UUID,
+    body: OverrideDecisionRequest,
+    session: Session = Depends(get_session),
+) -> EventEnrichmentView:
+    """Create a new immutable override version for a statement line before approval."""
+    line = session.get(BankStatementLine, line_id)
+    if line is None:
+        raise HTTPException(status_code=404, detail="statement line not found")
+    service = EnrichmentService(session)
+    try:
+        decision = service.override_decision(
+            line,
+            account_id=body.account_id,
+            category_id=body.category_id,
+            label_ids=body.label_ids,
+            payment_type=body.payment_type,
+        )
+        session.commit()
+    except CatalogValidationError as exc:
+        session.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+    except IntegrityError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="enrichment decision version conflict; retry",
+        ) from exc
+    return _decision_to_view(decision)

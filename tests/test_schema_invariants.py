@@ -1044,7 +1044,7 @@ class TestEnrichmentDecisionFinalizedUnique:
         )
         assert idx.unique is True
         expr_names = [expr.name for expr in idx.expressions]
-        assert expr_names == ["financial_event_id"]
+        assert expr_names == ["statement_line_id"]
         assert idx.dialect_kwargs.get("postgresql_where") == "finalized IS TRUE"
 
 
