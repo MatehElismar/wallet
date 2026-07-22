@@ -1,4 +1,5 @@
 #!/bin/sh
+export PATH="/usr/local/bin:$HOME/homebrew/bin:$PATH"
 set -e
 cd "$(dirname "$0")"
 
