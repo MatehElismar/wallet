@@ -9,6 +9,7 @@ export function NavBar() {
   const tabs = [
     { href: "/", label: "Batches" },
     { href: "/candidates", label: "Candidates" },
+    { href: "/progress", label: "Progress" },
   ];
 
   const isActive = (href: string) => {

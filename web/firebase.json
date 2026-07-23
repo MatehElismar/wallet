@@ -1,0 +1,6 @@
+{
+  "appHosting": {
+    "app": "wallet-v2-console",
+    "backend": "wallet-v2-console"
+  }
+}
