@@ -62,7 +62,6 @@ from wallet_v2.application.contracts_mcp import (
     McpRecord,
     McpRecordsResult,
 )
-from wallet_v2.domain.reference import canonical_external_reference
 from wallet_v2.persistence.models import (
     AccountMapping,
     CatalogSyncSnapshot,
