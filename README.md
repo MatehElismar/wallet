@@ -1,9 +1,17 @@
-# Wallet V2 Foundation
+# Wallet V2 — Historical Ledger Reconciliation
 
-Foundation for review-first email-to-Wallet transaction ingestion. It includes
-typed configuration, a PostgreSQL-first persistence schema, controlled IMAP,
-LLM, and Wallet adapters, and an operator CLI. All integrations default to
-disabled; credentials are never committed or logged.
+Wallet V2 is being shaped into a review-first historical ledger-reconciliation
+tool. An operator chooses a date range; the system discovers available accounts,
+reads existing Wallet history, ingests bank evidence, and proposes the Wallet
+entries that appear to be missing, duplicated, mismatched, or unresolved.
+
+Statements are the authority for canonical financial events. Notifications,
+email extraction, and LLM/MCP output are advisory evidence only. All
+integrations default to disabled; credentials are never committed or logged.
+
+See [`docs/product-vision.md`](docs/product-vision.md) for the pilot product
+scope and safety model. The codebase described below contains the foundation
+and controlled integrations that support that direction.
 
 ## Requirements
 
@@ -27,20 +35,34 @@ docs/architecture.md     architecture and operational invariants
 docker-compose.yml       local PostgreSQL service
 ```
 
-## Workflow
+## Workflow foundation
+
+The current codebase persists email observations and bank statements as
+separate evidence streams. The pilot product uses those streams for a selected
+historical date range, then compares posted statement lines with existing
+Wallet history:
 
 ```
-notification: execution run -> source message -> processing attempt -> candidate -> observation
-                                              -> review task
-statement:    execution run -> source message -> processing attempt -> statement -> lines
-                                                                    -> reconciliation links
-                                                                    -> review batch -> financial event
-                                                                                    -> import command
-                                                                                    -> wallet attempt -> wallet receipt
+email:      execution run -> source message -> processing attempt -> notification observation
+statement:  execution run -> source message -> processing attempt -> statement -> lines
+Wallet:     historical records (read-only baseline)
+
+statement line + Wallet comparison
+  -> matched | possible duplicate | mismatch | ambiguous | mapping exception
+  -> review finding only (no Wallet mutation in the pilot)
+
+statement line + no reliable Wallet match
+  -> missing in Wallet
+  -> reviewed statement-backed canonical proposal
+  -> canonical financial event
+  -> separately controlled import command -> Wallet attempt -> Wallet receipt
 ```
 
-Each stage is a separate table with immutable records for attempts, import
-commands, and receipts. See `docs/architecture.md` for invariants.
+Notification observations remain supporting evidence. They cannot directly
+or indirectly create a canonical proposal or import command. Each stage is
+persisted with traceable records; see
+`docs/product-vision.md` for the intended operator workflow and
+`docs/architecture.md` for implementation invariants.
 
 ## Local development
 
