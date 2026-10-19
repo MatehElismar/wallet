@@ -47,6 +47,7 @@ from wallet_v2.persistence.models import (
     FinancialEvent,
     McpProfileSnapshot,
     TransactionCandidate,
+    TransactionObservation,
 )
 from wallet_v2.persistence.models.mcp import AdvisoryResearch
 from wallet_v2.persistence.models.wallet_catalog import CatalogSyncCursor
@@ -491,8 +492,22 @@ def _make_candidate(session, account) -> TransactionCandidate:
         merchant="Online Store",
         transaction_date=date(2026, 7, 18),
     )
-    candidate.account_id = account.id
     session.add(candidate)
+    session.flush()
+    observation = TransactionObservation(
+        source_message_id=sm.id,
+        processing_attempt_id=attempt.id,
+        account_id=account.id,
+        candidate=candidate,
+        source_item_index=1,
+        observation_version=1,
+        direction=candidate.direction,
+        amount_minor=candidate.amount_minor,
+        currency=candidate.currency,
+        merchant=candidate.merchant,
+        transaction_date=candidate.transaction_date,
+    )
+    session.add(observation)
     session.flush()
     return candidate
 

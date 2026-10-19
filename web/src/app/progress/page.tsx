@@ -24,6 +24,7 @@ const DATA: Phase[] = [
       { label: "Immutable-table invariant (no updated_at column)", done: true },
       { label: "Idempotency keys (processing_attempts, import_commands)", done: true },
       { label: "Fail-closed config (WALLET_V2__ prefix)", done: true },
+      { label: "Bank-agnostic reference normalization (pluggable registry)", done: true },
       { label: "Hermetic test suite", done: true },
     ],
   },

@@ -1,24 +1,26 @@
 # Wallet V2 — Architecture
 
-This document describes the safe V2 foundation: the workflow stages, the
-domain primitives, the persistence schema, and the operational invariants
-that hold across them. It is the canonical reference for the code in
-`src/wallet_v2/` and the migration in `alembic/versions/0001_initial.py`.
+This document describes the Wallet V2 architecture: the workflow stages,
+domain primitives, persistence schema, controlled integrations, and operational
+invariants. It is the canonical reference for the code in `src/wallet_v2/`.
 
-## Scope of this milestone
+## Scope and operating boundary
 
-The foundation delivers scaffolding only. There are **no live
-connectors** in this codebase:
+Wallet V2 implements a review-first email-to-Wallet workflow. It includes a
+read-only IMAP mailbox adapter, an OpenAI-compatible extraction adapter, a
+BudgetBakers Wallet API adapter, and an MCP-backed advisory-enrichment adapter.
+It also includes a FastAPI operator API, a Next.js PWA, a catalog-sync service,
+and an idempotent notification outbox.
 
-- No IMAP / Gmail client.
-- No LLM client.
-- No Wallet API client.
-- No credentials, no mock fallbacks, no network calls.
+External integrations are disabled by default and credentials are never
+committed or logged. `dry_run` may read the configured mailbox and LLM but
+records Wallet import intent locally without making a Wallet API request.
+Mailbox access always uses read-only IMAP selection and `BODY.PEEK[]`.
 
-Every external adapter is dependency-injected by the (future) application
-layer. The foundation's job is to define the durable shape those adapters
-will populate: domain primitives, a PostgreSQL-first schema, and the
-invariants that keep the financial path safe.
+The application does not support unattended imports. Statement-derived
+financial events require review approval before an import command can be
+created. Notification candidates remain advisory-only and cannot directly
+create a Wallet import command.
 
 ## Workflow
 
@@ -211,7 +213,7 @@ WALLET_V2__DATABASE__URL=postgresql+psycopg://wallet_v2:wallet_v2@localhost:5432
 
 ## Tests
 
-`tests/` — hermetic; no network, no database required. The test suite
+`tests/` — hermetic; no network or external database required. The test suite
 exercises:
 
 - `Money` construction, addition, comparison, currency mismatch,
@@ -224,6 +226,8 @@ exercises:
   unique triple).
 - Attempt and import-command idempotency constraints (unique keys).
 - Import-command `unknown` state is representable and reachable.
+- Controlled IMAP, LLM, MCP, Wallet API, catalog-sync, push-outbox, API, and
+  operator-enrichment behavior through local fakes and mocked transports.
 
 Run with:
 
@@ -231,10 +235,10 @@ Run with:
 uv run pytest
 ```
 
-## Non-goals (this milestone)
+## Current non-goals
 
 - No migration of legacy data or credentials.
-- No live IMAP, Gmail, LLM, or Wallet API calls.
-- No automatic import functionality.
-- No reconciliation job implementation (schema and states are in place;
-  the job is a near-term follow-up).
+- No unattended or notification-candidate direct import functionality.
+- No production push-provider delivery (the provider remains disabled/stubbed).
+- No operator authentication or identity-backed audit attribution.
+- No background reconciliation worker for resolving `unknown` import states.

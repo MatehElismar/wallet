@@ -17,6 +17,7 @@ MCP-backed advisory enrichment, and immutable audit trail.
 - [x] Immutable-table invariant (no `updated_at` for append-only tables)
 - [x] Idempotency keys on processing attempts and import commands
 - [x] Fail-closed config system (`WALLET_V2__` prefix, all integrations default disabled)
+- [x] Bank-agnostic reference normalization (`ReferenceNormalizer` protocol + registry)
 - [x] Hermetic test suite (no network or database required)
 
 ### Adapters (Live Connectors)
