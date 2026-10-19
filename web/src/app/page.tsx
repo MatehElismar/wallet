@@ -18,87 +18,72 @@ import {
   Stat,
   StatGrid,
 } from "@/components/ui";
-import { listBatches, type BatchSummary } from "@/lib/api";
+import { listReconciliationRuns, type ReconciliationRunSummary } from "@/lib/api";
 import { formatCount } from "@/ui/format";
-import { summarizeBatches, toRunRows } from "@/ui/runs";
+import { toHistoricalRunRows } from "@/ui/historical-runs";
 
 export default function RunsPage() {
-  const [batches, setBatches] = useState<BatchSummary[]>([]);
+  const [runs, setRuns] = useState<ReconciliationRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    listBatches()
-      .then((data) => setBatches(data.batches))
-      .catch((reason: Error) => setError(reason.message || "Unable to load open statement batches."))
+    listReconciliationRuns()
+      .then((data) => setRuns(data.runs))
+      .catch((reason: Error) => setError(reason.message || "Unable to load reconciliation runs."))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const window = summarizeBatches(batches);
-  const rows = toRunRows(batches);
+  const rows = toHistoricalRunRows(runs);
 
   return (
     <>
       <PageHeader
         title="Reconciliation runs"
-        lede={
-          <>Review the statement windows currently available to the console. A true date-range run across Wallet history is the next pilot capability; this screen does not pretend that it already exists.</>
-        }
-        actions={<button className="btn btn-primary" type="button" disabled title="Date-range runs need the planned backend support.">New date-range run <span aria-hidden="true">↗</span></button>}
+        lede="Each materialized run is an immutable, inclusive date-range snapshot across every statement account discovered by the tool."
+        actions={<button className="btn btn-primary" type="button" disabled title="Creating a run requires a server-derived authenticated operator identity.">New date-range run <span aria-hidden="true">↗</span></button>}
       />
 
-      <Alert tone="info" title="Current data model: open statement batches">
-        The backend currently exposes open statement batches, not historical reconciliation runs or a read-only Wallet-history comparison. Coverage below describes statement-line resolution only.
+      <Alert tone="info" title="Current evidence scope: statements only">
+        These runs describe eligible posted statement evidence. Wallet-history ingestion and statement-to-Wallet matching are not available yet, so no count below means “missing from Wallet.”
       </Alert>
 
-      {loading ? <LoadingState label="Loading open statement batches…" /> : null}
-      {error ? <ErrorState message={error} onRetry={load} retryLabel="Reload batches" /> : null}
+      {loading ? <LoadingState label="Loading reconciliation runs…" /> : null}
+      {error ? <ErrorState message={error} onRetry={load} retryLabel="Reload runs" /> : null}
 
-      {!loading && !error && batches.length === 0 ? (
-        <EmptyState title="No open statement batches">
-          <p>When an available statement is ingested, it will appear here as an observed statement window. The planned date-range run will discover accounts automatically; it will not begin with an account picker.</p>
+      {!loading && !error && rows.length === 0 ? (
+        <EmptyState title="No materialized date-range runs">
+          <p>Runs will discover available statement accounts internally. Creation remains unavailable in this console until the server can derive and audit the operator identity.</p>
         </EmptyState>
       ) : null}
 
-      {!loading && !error && batches.length > 0 ? (
+      {!loading && !error && rows.length > 0 ? (
         <>
-          <Section title="Observed statement window" note={`Derived from ${formatCount(window.batchCount, "open batch")}; it is not a complete-period coverage claim.`}>
-            <Card tone="reconciliation">
-              <CardHeader title={window.rangeLabel} subtitle="Open statement evidence currently available" aside={<AuthorityChip tier="reconciliation" compact />} />
-              <StatGrid>
-                <Stat label="Accounts observed" value={window.accountCount} hint="Grouped after ingestion" />
-                <Stat label="Posted lines" value={window.lineCount} hint={window.currencies.length ? window.currencies.join(" · ") : "Currency unavailable"} />
-                <Stat label="Settled lines" value={window.settledCount} hint={`${window.coverageLabel} of observed lines`} tone="settled" />
-                <Stat label="Needs resolution" value={window.unreconciledCount + window.ambiguousCount} hint={`${window.ambiguousCount} ambiguous`} tone={window.attentionCount ? "warn" : "settled"} />
-              </StatGrid>
-            </Card>
-          </Section>
-
-          <WalletMatchingCaveat />
-
-          <Section title="Open statement workspaces" note="Each row is a statement workspace, grouped by its discovered account context.">
-            <ScrollRegion label="Open statement workspaces">
+          <Section title="Materialized date ranges" note={`${formatCount(rows.length, "immutable snapshot")} of eligible statement evidence.`}>
+            <ScrollRegion label="Materialized reconciliation runs">
               <table className="data-table run-table">
-                <caption className="sr-only">Open statement review batches</caption>
-                <thead><tr><th scope="col">Statement window</th><th scope="col">Account</th><th scope="col">Coverage</th><th scope="col">Attention</th><th scope="col"><span className="sr-only">Open</span></th></tr></thead>
+                <caption className="sr-only">Materialized reconciliation runs</caption>
+                <thead><tr><th scope="col">Date range</th><th scope="col">Accounts</th><th scope="col">Posted evidence</th><th scope="col">Scope</th><th scope="col"><span className="sr-only">Open</span></th></tr></thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.batchId}>
-                      <th scope="row"><span className="table-primary">{row.periodLabel}</span><span className="table-secondary">Statement date {row.statementDateLabel}</span></th>
-                      <td>{row.accountLabel}</td>
-                      <td><strong>{row.coverage.coverageLabel}</strong><span className="table-secondary">{row.coverage.settledCount} settled · {row.coverage.lineCount} lines</span></td>
-                      <td>{row.needsAttention ? <Badge tone="warn">{row.coverage.ambiguousCount + row.coverage.unreconciledCount} need review</Badge> : <Badge tone="settled">Ready for batch review</Badge>}</td>
-                      <td><Link className="btn btn-secondary btn-small" href={`/batches/${row.batchId}`}>Open statement<span className="sr-only"> for {row.accountLabel}</span></Link></td>
+                    <tr key={row.runId}>
+                      <th scope="row"><span className="table-primary">{row.periodLabel}</span><span className="table-secondary">Immutable materialized snapshot</span></th>
+                      <td>{row.accounts}</td>
+                      <td><strong>{row.includedLines}</strong><span className="table-secondary">{row.undatedExcludedLines} undated excluded</span></td>
+                      <td><Badge tone="reconciliation">{row.evidenceScopeLabel}</Badge></td>
+                      <td><Link className="btn btn-secondary btn-small" href={`/runs/${row.runId}`}>Open run<span className="sr-only"> for {row.periodLabel}</span></Link></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </ScrollRegion>
           </Section>
+
+          <WalletMatchingCaveat />
         </>
       ) : null}
     </>
