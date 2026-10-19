@@ -1,153 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { CandidateResearch } from "@/lib/api";
-import { listCandidates } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+
+import { AdvisoryBanner, AuthorityChip } from "@/components/authority";
+import { Badge, Card, CardHeader, EmptyState, ErrorState, LoadingState, PageHeader, Section, Stat, StatGrid } from "@/components/ui";
+import { listCandidates, type CandidateResearch } from "@/lib/api";
+import { formatDate, formatSignedAmount, humanizeToken } from "@/ui/format";
 import { GRADE_LABEL } from "../candidate-research-card";
 
 export default function CandidatesPage() {
   const [candidates, setCandidates] = useState<CandidateResearch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    listCandidates()
-      .then(setCandidates)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    listCandidates().then(setCandidates).catch((reason: Error) => setError(reason.message || "Unable to load notification observations.")).finally(() => setLoading(false));
   }, []);
+  useEffect(() => { load(); }, [load]);
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: "center", padding: "2rem" }}>
-        <span className="spinner" />
-        <span style={{ marginLeft: "0.5rem", color: "var(--text-muted)" }}>
-          Loading candidates...
-        </span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return <div className="alert alert-error">{error}</div>;
-  }
-
-  if (candidates.length === 0) {
-    return (
-      <div className="alert alert-info">
-        No notification candidates. Candidates appear when transactional
-        notifications (e.g. Banco Santa Cruz debits, BHD transfers) are
-        extracted from email.
-      </div>
-    );
-  }
-
-  const formatDate = (s: string | null) => {
-    if (!s) return "—";
-    return new Date(s).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
-  const formatMinor = (minor: number, currency: string) => {
-    const major = minor / 100;
-    return major.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
-  const upDirection = (d: string) =>
-    d.charAt(0).toUpperCase() + d.slice(1);
-
-  const bankLabel = (c: CandidateResearch) => {
-    if (c.sender) return c.sender;
-    if (c.reference) return c.reference;
-    return "—";
-  };
-
-  return (
-    <div>
-      <h2 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem" }}>
-        Notification Candidates
-        <span
-          style={{
-            fontWeight: 400,
-            color: "var(--text-muted)",
-            fontSize: "0.75rem",
-            marginLeft: "0.5rem",
-          }}
-        >
-          advisory only · never finalizable
-        </span>
-      </h2>
-
-      {candidates.map((c) => (
-        <Link
-          key={c.candidate_id}
-          href={`/candidates/${c.candidate_id}`}
-          style={{ color: "inherit", textDecoration: "none" }}
-        >
-          <div className="card" style={{ cursor: "pointer" }}>
-            <div className="card-header">
-              <div>
-                <div className="card-title">
-                  {c.merchant || c.rationale || "Unknown"}
-                </div>
-                <div className="card-subtitle">
-                  {bankLabel(c)}
-                </div>
-              </div>
-              <span className="badge badge-open">
-                {c.evidence_grade
-                  ? GRADE_LABEL[c.evidence_grade] ?? c.evidence_grade
-                  : "pending"}
-              </span>
-            </div>
-            <div className="grid-2">
-              <div className="stat">
-                <div className="stat-label">Amount</div>
-                <div
-                  className={`stat-value ${c.direction === "credit" ? "credit" : "debit"}`}
-                >
-                  {c.amount_minor != null && c.currency
-                    ? `${c.direction === "credit" ? "+" : "−"}${formatMinor(c.amount_minor, c.currency)} ${c.currency}`
-                    : "—"}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">Direction</div>
-                <div className="stat-value">
-                  {c.direction ? upDirection(c.direction) : "—"}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">Date</div>
-                <div className="stat-value">
-                  {formatDate(c.transaction_date)}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">Status</div>
-                <div className="stat-value">
-                  {c.candidate_status || "—"}
-                </div>
-              </div>
-            </div>
-            {c.subject && (
-              <div
-                className="card-subtitle"
-                style={{ marginTop: "0.5rem" }}
-              >
-                {c.subject}
-              </div>
-            )}
-          </div>
-        </Link>
-      ))}
-    </div>
-  );
+  return <>
+    <PageHeader title="Notification observations" lede="Legacy email-derived context. It can support a statement review, but it cannot create a canonical proposal or change Wallet." />
+    <AdvisoryBanner />
+    {loading ? <LoadingState label="Loading notification observations…" /> : null}
+    {error ? <ErrorState message={error} onRetry={load} retryLabel="Reload observations" /> : null}
+    {!loading && !error && candidates.length === 0 ? <EmptyState title="No notification observations"><p>Email-derived observations appear here when the configured mailbox is processed. They remain separate from historical reconciliation coverage until corroborated by a posted statement line.</p></EmptyState> : null}
+    {!loading && !error && candidates.length > 0 ? <Section title="Available advisory evidence" note="Research grades describe the available context; they do not express financial authority."><div className="card-grid">{candidates.map((candidate) => <Link key={candidate.candidate_id} href={`/candidates/${candidate.candidate_id}`} className="card-link"><Card tone="advisory"><CardHeader title={candidate.merchant || candidate.rationale || "Unidentified observation"} subtitle={candidate.sender || candidate.reference || "Source unavailable"} aside={<Badge tone="advisory">{GRADE_LABEL[candidate.evidence_grade] ?? candidate.evidence_grade ?? "Pending"}</Badge>} /><StatGrid><Stat label="Amount" value={formatSignedAmount(candidate.amount_minor, candidate.currency, candidate.direction)} /><Stat label="Observed date" value={formatDate(candidate.transaction_date)} /><Stat label="Status" value={humanizeToken(candidate.candidate_status)} /><Stat label="Authority" value={<AuthorityChip tier="advisory" compact />} /></StatGrid><p className="card-link-hint">Inspect advisory evidence <span aria-hidden="true">→</span></p></Card></Link>)}</div></Section> : null}
+  </>;
 }

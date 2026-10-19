@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isBlockedFinancialMutation } from "@/lib/proxy-policy";
 
 const BACKEND_URL = process.env.WALLET_V2_API_URL;
 
@@ -104,6 +105,16 @@ async function proxyRequest(
   request: NextRequest,
   pathSegments: string[]
 ): Promise<NextResponse> {
+  if (isBlockedFinancialMutation(request.method, pathSegments)) {
+    return NextResponse.json(
+      {
+        detail:
+          "Canonicalization and import commands are unavailable until authenticated operator identity is enforced by the backend.",
+      },
+      { status: 503 },
+    );
+  }
+
   const baseUrl = resolveBackendUrl();
   const queryString = request.nextUrl.search;
   const path = "/" + pathSegments.join("/");

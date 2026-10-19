@@ -4,15 +4,15 @@ import { PushInitScript } from "./push-init";
 import { NavBar } from "./nav-bar";
 
 export const metadata: Metadata = {
-  title: "Wallet V2 Reconciliation",
-  description: "Statement reconciliation console",
+  title: "Wallet V2 — Historical reconciliation",
+  description: "A review-first historical ledger reconciliation console",
   manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#2563eb",
+  themeColor: "#10141f",
 };
 
 function ServiceWorkerRegistration() {
@@ -31,23 +31,27 @@ if ("serviceWorker" in navigator) {
   );
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <ServiceWorkerRegistration />
         <PushInitScript />
-        <header>
-          <div className="container">
-            <h1>Wallet V2</h1>
+        <header className="app-header">
+          <div className="container app-header-bar">
+            <div>
+              <h1>Wallet V2</h1>
+              <p className="app-header-tagline">Historical reconciliation</p>
+            </div>
+            <div className="app-meta" role="status" aria-label="Operational status">
+              <span className="chip chip-warn">Mode unavailable</span>
+              <span className="chip chip-muted">Operator identity pending</span>
+            </div>
           </div>
           <NavBar />
         </header>
-        <main className="container">{children}</main>
+        <main id="main-content" className="container app-main">{children}</main>
       </body>
     </html>
   );
