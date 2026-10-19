@@ -35,6 +35,17 @@ def _parse_uids(value: str) -> tuple[int, ...]:
     return uids
 
 
+def _message_failure_metadata(
+    *, uid_validity: int, message_uid: int, exc: Exception
+) -> dict[str, int | str]:
+    """Return the durable, PII-safe diagnostic identity for one failed message."""
+    return {
+        "uid_validity": uid_validity,
+        "message_uid": message_uid,
+        "error_kind": type(exc).__name__,
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="wallet-v2")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -157,7 +168,7 @@ def _run(args: argparse.Namespace) -> int:
         )
         created_candidates = 0
         consulted_messages: list[dict[str, object]] = []
-        message_failures: list[dict[str, object]] = []
+        message_failures: list[dict[str, int | str]] = []
         for message in messages:
             message_summary = {
                 "uid_validity": message.uid_validity,
@@ -181,10 +192,11 @@ def _run(args: argparse.Namespace) -> int:
                     created_candidates += len(candidates)
             except Exception as exc:
                 message_failures.append(
-                    {
-                        "message_uid": message.message_uid,
-                        "error_kind": type(exc).__name__,
-                    }
+                    _message_failure_metadata(
+                        uid_validity=message.uid_validity,
+                        message_uid=message.message_uid,
+                        exc=exc,
+                    )
                 )
         with session_scope(factory) as session:
             run = session.get(ExecutionRun, run_id)
@@ -195,7 +207,8 @@ def _run(args: argparse.Namespace) -> int:
                 workflow.finish_run(
                     run,
                     outcome="failed",
-                    error=f"{len(message_failures)} message(s) failed; inspect run output",
+                    error=f"{len(message_failures)} message(s) failed; inspect run metadata",
+                    message_failures=message_failures,
                 )
             else:
                 workflow.finish_run(run, outcome="succeeded")

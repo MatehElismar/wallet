@@ -31,6 +31,7 @@ from wallet_v2.persistence.models import (
     BankStatement,
     CatalogSyncCursor,
     CatalogSyncSnapshot,
+    ExecutionRun,
     FinancialEvent,
     Inbox,
     InboxCursorHistory,
@@ -477,3 +478,67 @@ class TestControlledWorkflow:
         event_kinds = {event.event_kind for event in session.scalars(select(AuditEvent)).all()}
         assert "execution_run_started" in event_kinds
         assert "execution_run_finished" in event_kinds
+
+    def test_failed_run_persists_redacted_message_failure_metadata(
+        self, session: Session, sqlite_engine
+    ) -> None:
+        workflow = WalletWorkflow(session)
+        run = workflow.start_run(
+            mode=IntegrationMode.DRY_RUN,
+            trigger="test",
+            label="failure-metadata",
+            metadata={"selection": {"kind": "explicit_uids", "uids": [42]}},
+        )
+
+        workflow.finish_run(
+            run,
+            outcome="failed",
+            error="1 message(s) failed; inspect run metadata",
+            message_failures=[
+                {
+                    "uid_validity": 7,
+                    "message_uid": 42,
+                    "error_kind": "RuntimeError",
+                }
+            ],
+        )
+        run_id = run.id
+        session.commit()
+        with Session(sqlite_engine) as reloaded_session:
+            reloaded = reloaded_session.get(ExecutionRun, run_id)
+
+        assert reloaded is not None
+        assert reloaded.metadata_json == {
+            "selection": {"kind": "explicit_uids", "uids": [42]},
+            "message_failures": [
+                {
+                    "uid_validity": 7,
+                    "message_uid": 42,
+                    "error_kind": "RuntimeError",
+                }
+            ],
+        }
+
+    def test_failed_run_rejects_message_failure_data_outside_allowlist(
+        self, session: Session
+    ) -> None:
+        workflow = WalletWorkflow(session)
+        run = workflow.start_run(
+            mode=IntegrationMode.DRY_RUN,
+            trigger="test",
+            label="unsafe-failure-metadata",
+        )
+
+        with pytest.raises(WorkflowError, match="allowlisted"):
+            workflow.finish_run(
+                run,
+                outcome="failed",
+                message_failures=[
+                    {
+                        "uid_validity": 7,
+                        "message_uid": 42,
+                        "error_kind": "RuntimeError",
+                        "error_message": "secret payload",
+                    }
+                ],
+            )

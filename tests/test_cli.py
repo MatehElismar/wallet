@@ -8,7 +8,12 @@ from typing import Sequence
 import pytest
 from sqlalchemy import create_engine, event
 
-from wallet_v2.__main__ import _parse_uids, _parser, _sync_catalog
+from wallet_v2.__main__ import (
+    _message_failure_metadata,
+    _parse_uids,
+    _parser,
+    _sync_catalog,
+)
 from wallet_v2.application.contracts import (
     WalletAccount,
     WalletBalance,
@@ -70,6 +75,20 @@ def test_explicit_uids_and_reprocess_are_parsed() -> None:
 
     assert args.uids == (79148, 79151, 79168)
     assert args.reprocess is True
+
+
+def test_message_failure_metadata_is_redacted_and_traceable() -> None:
+    details = _message_failure_metadata(
+        uid_validity=7,
+        message_uid=42,
+        exc=RuntimeError("provider response included secret payload"),
+    )
+
+    assert details == {
+        "uid_validity": 7,
+        "message_uid": 42,
+        "error_kind": "RuntimeError",
+    }
 
 
 @pytest.mark.parametrize("value", ["", "0", "1,nope", "-1"])

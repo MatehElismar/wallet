@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -115,12 +116,25 @@ class WalletWorkflow:
         self._audit(run, "execution_run", run.id, AuditEventKind.EXECUTION_RUN_STARTED)
         return run
 
-    def finish_run(self, run: ExecutionRun, *, outcome: str, error: str | None = None) -> None:
+    def finish_run(
+        self,
+        run: ExecutionRun,
+        *,
+        outcome: str,
+        error: str | None = None,
+        message_failures: Sequence[Mapping[str, object]] | None = None,
+    ) -> None:
         if outcome not in {"succeeded", "failed", "cancelled"}:
             raise WorkflowError("run outcome must be succeeded, failed, or cancelled")
         run.outcome = outcome
         run.finished_at = self.now()
         run.error_summary = error
+        if message_failures is not None:
+            metadata = dict(run.metadata_json or {})
+            metadata["message_failures"] = self._validated_message_failures(
+                message_failures
+            )
+            run.metadata_json = metadata
         self._audit(
             run,
             "execution_run",
@@ -138,6 +152,42 @@ class WalletWorkflow:
                 entity_id=run.id,
                 metadata={"error": error} if error else None,
             )
+
+    @staticmethod
+    def _validated_message_failures(
+        message_failures: Sequence[Mapping[str, object]],
+    ) -> list[dict[str, int | str]]:
+        """Validate and copy the allowlisted, PII-safe failure diagnostics."""
+        allowed = {"uid_validity", "message_uid", "error_kind"}
+        validated: list[dict[str, int | str]] = []
+        for failure in message_failures:
+            if set(failure) != allowed:
+                raise WorkflowError(
+                    "message failure metadata must contain only allowlisted fields"
+                )
+            uid_validity = failure["uid_validity"]
+            message_uid = failure["message_uid"]
+            error_kind = failure["error_kind"]
+            if (
+                isinstance(uid_validity, bool)
+                or not isinstance(uid_validity, int)
+                or uid_validity < 1
+                or isinstance(message_uid, bool)
+                or not isinstance(message_uid, int)
+                or message_uid < 1
+                or not isinstance(error_kind, str)
+                or not error_kind.isidentifier()
+                or len(error_kind) > 128
+            ):
+                raise WorkflowError("message failure metadata has invalid field values")
+            validated.append(
+                {
+                    "uid_validity": uid_validity,
+                    "message_uid": message_uid,
+                    "error_kind": error_kind,
+                }
+            )
+        return validated
 
     def ingest_and_extract(
         self,
