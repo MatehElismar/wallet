@@ -19,6 +19,8 @@ from wallet_v2.persistence.models.reconciliation import (
     FinancialAccount,
     FinancialEvent,
     ReconciliationLink,
+    ReconciliationRun,
+    ReconciliationRunAccountCoverage,
     StatementReviewBatch,
     TransactionObservation,
 )
@@ -60,6 +62,8 @@ __all__ = [
     "BankStatementLine",
     "TransactionObservation",
     "ReconciliationLink",
+    "ReconciliationRun",
+    "ReconciliationRunAccountCoverage",
     "StatementReviewBatch",
     "FinancialEvent",
     "McpProfileSnapshot",

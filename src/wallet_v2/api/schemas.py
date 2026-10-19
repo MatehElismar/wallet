@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,6 +33,44 @@ class BatchSummary(BaseModel):
 
 class BatchSummaryList(BaseModel):
     batches: list[BatchSummary]
+
+
+class ReconciliationRunSummary(BaseModel):
+    run_id: UUID
+    period_start: date
+    period_end: date
+    state: str
+    evidence_scope: Literal["statement_evidence_only"] = "statement_evidence_only"
+    statement_account_count: int
+    included_statement_line_count: int
+    undated_excluded_line_count: int
+    created_at: datetime
+
+
+class ReconciliationRunSummaryList(BaseModel):
+    runs: list[ReconciliationRunSummary]
+
+
+class ReconciliationRunAccountCoverageView(BaseModel):
+    financial_account_id: UUID
+    issuer: str
+    external_reference: str
+    statement_count: int
+    included_line_count: int
+    undated_excluded_line_count: int
+    unresolved_line_count: int
+    # This is a statement-to-notification-evidence outcome, never a Wallet-history claim.
+    new_count: int
+    new_count_definition: Literal["unmatched_notification_evidence"] = (
+        "unmatched_notification_evidence"
+    )
+    matched_count: int
+    ambiguous_count: int
+    ignored_count: int
+
+
+class ReconciliationRunDetail(ReconciliationRunSummary):
+    account_coverages: list[ReconciliationRunAccountCoverageView]
 
 
 class ReconciliationLinkView(BaseModel):

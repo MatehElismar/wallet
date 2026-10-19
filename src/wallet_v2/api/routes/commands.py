@@ -33,6 +33,20 @@ from wallet_v2.persistence.models import (
 router = APIRouter(prefix="/commands", tags=["commands"])
 
 
+def _require_authenticated_operator(action: str) -> None:
+    """Fail closed until the API can derive an operator from an authenticated session.
+
+    A caller-supplied ``reviewer_id`` is not attributable identity. Financial
+    mutations remain deliberately unavailable rather than relying on UI-only
+    controls or accepting forged audit attribution.
+    """
+
+    raise HTTPException(
+        status_code=503,
+        detail=f"{action} is unavailable until authenticated operator identity is enforced.",
+    )
+
+
 def _start_command_run(session: Session) -> tuple[WalletWorkflow, ExecutionRun]:
     workflow = WalletWorkflow(session)
     run = workflow.start_run(
@@ -150,6 +164,7 @@ def approve_batch(
     body: ApproveBatchRequest,
     session: Session = Depends(get_session),
 ) -> ApproveBatchResponse:
+    _require_authenticated_operator("Canonical approval")
     batch = session.get(StatementReviewBatch, batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="batch not found")
@@ -181,6 +196,7 @@ def dry_run_import(
     event_id: UUID,
     session: Session = Depends(get_session),
 ) -> DryRunImportResponse:
+    _require_authenticated_operator("Wallet import")
     event = session.get(FinancialEvent, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="financial event not found")
