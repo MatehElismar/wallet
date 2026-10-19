@@ -144,6 +144,15 @@ export async function listReconciliationRuns(): Promise<{
   return fetchJSON("/reconciliation-runs");
 }
 
+export async function createReconciliationRun(
+  body: { period_start: string; period_end: string },
+): Promise<ReconciliationRunSummary> {
+  return fetchJSON("/reconciliation-runs", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function getReconciliationRun(
   runId: string,
 ): Promise<ReconciliationRunDetail> {

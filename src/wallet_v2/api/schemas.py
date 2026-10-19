@@ -51,6 +51,13 @@ class ReconciliationRunSummaryList(BaseModel):
     runs: list[ReconciliationRunSummary]
 
 
+class MaterializeReconciliationRunRequest(BaseModel):
+    """Operator-selected inclusive range for non-financial evidence materialization."""
+
+    period_start: date
+    period_end: date
+
+
 class ReconciliationRunAccountCoverageView(BaseModel):
     financial_account_id: UUID
     issuer: str

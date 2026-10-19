@@ -133,6 +133,27 @@ class TestListReconciliationRuns:
         assert response.status_code == 200
         assert response.json() == {"runs": []}
 
+    def test_operator_can_materialize_a_statement_evidence_snapshot(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/reconciliation-runs",
+            json={"period_start": "2026-01-01", "period_end": "2026-01-31"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["period_start"] == "2026-01-01"
+        assert payload["period_end"] == "2026-01-31"
+        assert payload["state"] == "materialized"
+        assert payload["evidence_scope"] == "statement_evidence_only"
+        assert payload["statement_account_count"] == 0
+        assert payload["included_statement_line_count"] == 0
+        assert payload["undated_excluded_line_count"] == 0
+        assert payload["created_at"]
+        listed = client.get("/reconciliation-runs").json()["runs"]
+        assert [item["run_id"] for item in listed] == [payload["run_id"]]
+
     def test_detail_returns_a_persisted_snapshot(self, client: TestClient) -> None:
         from datetime import date
 

@@ -45,8 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <p className="app-header-tagline">Historical reconciliation</p>
             </div>
             <div className="app-meta" role="status" aria-label="Operational status">
-              <span className="chip chip-warn">Mode unavailable</span>
-              <span className="chip chip-muted">Operator identity pending</span>
+              <span className="chip chip-reconciliation">Statement evidence only</span>
+              <span className="chip chip-muted">Canonical approval locked</span>
             </div>
           </div>
           <NavBar />

@@ -10,11 +10,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from wallet_v2.api.deps import get_session
 from wallet_v2.api.schemas import (
+    MaterializeReconciliationRunRequest,
     ReconciliationRunAccountCoverageView,
     ReconciliationRunDetail,
     ReconciliationRunSummary,
     ReconciliationRunSummaryList,
 )
+from wallet_v2.application.reconciliation_runs import materialize_reconciliation_run
 from wallet_v2.persistence.models import ReconciliationRun
 
 
@@ -32,6 +34,23 @@ def _summary(run: ReconciliationRun) -> ReconciliationRunSummary:
         undated_excluded_line_count=run.undated_excluded_line_count,
         created_at=run.created_at,
     )
+
+
+@router.post("", response_model=ReconciliationRunSummary, status_code=201)
+def create_reconciliation_run(
+    body: MaterializeReconciliationRunRequest,
+    session: Session = Depends(get_session),
+) -> ReconciliationRunSummary:
+    """Materialize a non-financial, immutable statement-evidence snapshot."""
+    try:
+        run = materialize_reconciliation_run(
+            session,
+            period_start=body.period_start,
+            period_end=body.period_end,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _summary(run)
 
 
 @router.get("", response_model=ReconciliationRunSummaryList)

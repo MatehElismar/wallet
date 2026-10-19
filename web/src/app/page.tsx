@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import { AuthorityChip, WalletMatchingCaveat } from "@/components/authority";
 import {
@@ -15,10 +15,12 @@ import {
   PageHeader,
   ScrollRegion,
   Section,
-  Stat,
-  StatGrid,
 } from "@/components/ui";
-import { listReconciliationRuns, type ReconciliationRunSummary } from "@/lib/api";
+import {
+  createReconciliationRun,
+  listReconciliationRuns,
+  type ReconciliationRunSummary,
+} from "@/lib/api";
 import { formatCount } from "@/ui/format";
 import { toHistoricalRunRows } from "@/ui/historical-runs";
 
@@ -26,6 +28,10 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<ReconciliationRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -38,26 +44,75 @@ export default function RunsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const createRun = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCreateError(null);
+    if (!periodStart || !periodEnd) {
+      setCreateError("Choose both the start and end dates.");
+      return;
+    }
+    if (periodStart > periodEnd) {
+      setCreateError("The start date must be on or before the end date.");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const run = await createReconciliationRun({
+        period_start: periodStart,
+        period_end: periodEnd,
+      });
+      setRuns((current) => [run, ...current]);
+      setPeriodStart("");
+      setPeriodEnd("");
+    } catch (reason) {
+      setCreateError(reason instanceof Error ? reason.message : "Unable to materialize the reconciliation run.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const rows = toHistoricalRunRows(runs);
 
   return (
     <>
       <PageHeader
         title="Reconciliation runs"
-        lede="Each materialized run is an immutable, inclusive date-range snapshot across every statement account discovered by the tool."
-        actions={<button className="btn btn-primary" type="button" disabled title="Creating a run requires a server-derived authenticated operator identity.">New date-range run <span aria-hidden="true">↗</span></button>}
+        lede="Choose an inclusive date range. The tool discovers all eligible statement accounts internally and freezes an immutable evidence snapshot."
       />
 
       <Alert tone="info" title="Current evidence scope: statements only">
-        These runs describe eligible posted statement evidence. Wallet-history ingestion and statement-to-Wallet matching are not available yet, so no count below means “missing from Wallet.”
+        Creating a run never creates canonical financial records or contacts Wallet. Wallet-history ingestion and statement-to-Wallet matching are not available yet, so no count below means “missing from Wallet.”
       </Alert>
+
+      <Section title="Materialize a date range" note="No account picker: coverage includes every eligible statement account discovered within the selected range.">
+        <Card tone="reconciliation">
+          <CardHeader title="Create immutable statement-evidence coverage" subtitle="This is safe to run locally; it does not approve or import financial events." aside={<AuthorityChip tier="reconciliation" compact />} />
+          <form onSubmit={createRun}>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="period-start">Start date</label>
+                <input id="period-start" type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} required disabled={creating} />
+              </div>
+              <div className="form-group">
+                <label htmlFor="period-end">End date</label>
+                <input id="period-end" type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} required disabled={creating} />
+              </div>
+            </div>
+            {createError ? <Alert tone="danger" title="Run not created">{createError}</Alert> : null}
+            <div className="btn-row">
+              <button className="btn btn-primary" type="submit" disabled={creating}>{creating ? "Materializing…" : "Create date-range run"}</button>
+            </div>
+          </form>
+        </Card>
+      </Section>
 
       {loading ? <LoadingState label="Loading reconciliation runs…" /> : null}
       {error ? <ErrorState message={error} onRetry={load} retryLabel="Reload runs" /> : null}
 
       {!loading && !error && rows.length === 0 ? (
         <EmptyState title="No materialized date-range runs">
-          <p>Runs will discover available statement accounts internally. Creation remains unavailable in this console until the server can derive and audit the operator identity.</p>
+          <p>Choose a date range above to record the statement evidence currently available. The resulting snapshot is immutable after creation.</p>
         </EmptyState>
       ) : null}
 
