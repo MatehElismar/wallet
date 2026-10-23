@@ -6,7 +6,7 @@ import {
   getBatchDetail,
   resolveLine,
   mapAccount,
-  approveBatch,
+
   dryRunImport,
   getEventEnrichment,
   getLineEnrichment,
@@ -29,6 +29,8 @@ import type {
   OverrideDecisionBody,
 } from "@/lib/api";
 import { CandidateResearchCard, GRADE_LABEL } from "../../candidate-research-card";
+import { Dialog } from "@/components/dialog";
+import { formatDate as formatCalendarDate } from "@/ui/format";
 
 interface ResolveModal {
   lineId: string;
@@ -64,11 +66,10 @@ export default function BatchDetailPage() {
   const [resolveObservationId, setResolveObservationId] = useState("");
   const [resolveNote, setResolveNote] = useState("");
 
-  const [approveReviewer, setApproveReviewer] = useState("operator");
-  const [approving, setApproving] = useState(false);
+
   const [generatingProposals, setGeneratingProposals] = useState(false);
   const [dryRunResults, setDryRunResults] = useState<DryRunResult[]>([]);
-  const [approvedEvents, setApprovedEvents] = useState<FinancialEventView[]>([]);
+
 
   const [enrichmentByLine, setEnrichmentByLine] = useState<
     Record<string, EventEnrichment | null>
@@ -227,14 +228,7 @@ export default function BatchDetailPage() {
     );
   }
 
-  const formatDate = (s: string | null) => {
-    if (!s) return "—";
-    return new Date(s).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
+  const formatDate = formatCalendarDate;
 
   const formatMinor = (minor: number, currency: string) => {
     const major = minor / 100;
@@ -282,23 +276,6 @@ export default function BatchDetailPage() {
     }
   };
 
-  const handleApprove = async () => {
-    setActionError(null);
-    setApproving(true);
-    try {
-      const overridesMap = Object.keys(overridesByLine).length > 0 ? overridesByLine : undefined;
-      const result = await approveBatch(batchId, {
-        reviewer_id: approveReviewer,
-        enrichment_overrides: overridesMap,
-      });
-      setApprovedEvents(result.events);
-      refresh();
-    } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : "Approve failed");
-    } finally {
-      setApproving(false);
-    }
-  };
 
   const handleDryRun = async (event: FinancialEventView) => {
     setActionError(null);
@@ -340,6 +317,13 @@ export default function BatchDetailPage() {
       {enrichActionError && (
         <div className="alert alert-error">{enrichActionError}</div>
       )}
+
+      <div className="alert alert-info" role="status">
+        <strong>Statement reconciliation workspace.</strong> These posted lines
+        are compared with notification observations in the current backend.
+        Wallet-history matching is not implemented yet, so this screen cannot
+        say whether a line is already recorded in Wallet.
+      </div>
 
       <div className="card">
         <div className="card-header">
@@ -399,16 +383,16 @@ export default function BatchDetailPage() {
         <div className="card">
           <div className="card-header">
             <div>
-              <div className="card-title">Wallet Account Mapping</div>
+              <div className="card-title">Account reference</div>
               <div className="card-subtitle">
-                {batch.account.wallet_account_reference || "Not mapped"}
+                {batch.account.wallet_account_reference || "No reference recorded"}
               </div>
             </div>
             <button
               className="btn-primary btn-small"
               onClick={() => setMapModal(true)}
             >
-              Map
+              Record reference
             </button>
           </div>
         </div>
@@ -460,9 +444,9 @@ export default function BatchDetailPage() {
       {candidateResearch.length > 0 && (
         <div style={{ marginTop: "1.5rem" }}>
           <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, margin: "0 0 0.5rem" }}>
-            Notification Candidate Research
+            Notification observations
             <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "0.75rem", marginLeft: "0.5rem" }}>
-              advisory only · never finalizable
+              advisory evidence · never canonical or importable
             </span>
           </h3>
           {candidateResearch.map((c) => (
@@ -483,41 +467,45 @@ export default function BatchDetailPage() {
         >
           <div>
             <div className="card-title" style={{ marginBottom: "0.5rem" }}>
-              Approve Batch
+              Canonicalization unavailable
             </div>
-            <div className="form-group">
-              <label>Reviewer ID</label>
-              <input
-                value={approveReviewer}
-                onChange={(e) => setApproveReviewer(e.target.value)}
-              />
+            <div className="alert alert-warn" style={{ marginBottom: 0 }}>
+              Creating canonical events is disabled in this shell until the
+              backend derives reviewer identity from an authenticated session.
+              Free-text reviewer attribution is not acceptable for pilot use.
             </div>
           </div>
           <button
             className="btn-primary"
-            disabled={!allResolved || approving}
-            onClick={handleApprove}
+            disabled
+            title="Authentication and session-derived reviewer identity are required."
           >
-            {approving
-              ? "Approving..."
-              : allResolved
-                ? "Approve All"
-                : "Resolve all lines first"}
+            Authentication required before canonicalization
           </button>
         </div>
       )}
 
       {isApproved && (
         <div className="alert alert-info" style={{ marginTop: "1rem" }}>
-          Batch approved. Issuing a dry-run import intent for each event will
-          record an import command without submitting to Wallet.
+          Canonical events were created from this approved statement. A
+          separate dry-run import action may record an import command without
+          submitting anything to Wallet.
         </div>
       )}
 
+
       {mapModal && batch.account && (
-        <div className="modal-overlay" onClick={() => setMapModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Map Wallet Account</h3>
+        <Dialog
+          title="Record Wallet account reference"
+          onClose={() => setMapModal(false)}
+          description={<div className="alert alert-warn">
+              This legacy reference is not a reviewed import-authorizing account mapping. The pilot will replace it with an explicit mapping proposal and review flow.
+            </div>}
+          footer={<>
+              <button className="btn btn-secondary btn-small" onClick={() => setMapModal(false)}>Cancel</button>
+              <button className="btn btn-primary btn-small" disabled={!walletRef.trim()} onClick={handleMapAccount}>Save reference</button>
+            </>}
+        >
             <div className="form-group">
               <label>Wallet Account Reference</label>
               <input
@@ -527,34 +515,18 @@ export default function BatchDetailPage() {
                 placeholder="e.g. wallet-card-1"
               />
             </div>
-            <div className="modal-actions">
-              <button
-                className="btn-small"
-                onClick={() => setMapModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-primary btn-small"
-                disabled={!walletRef.trim()}
-                onClick={handleMapAccount}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {resolveModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => { setResolveModal(null); setResolveObservationId(""); }}
+        <Dialog
+          title={`Resolve statement line #${resolveModal.lineIndex}`}
+          onClose={() => { setResolveModal(null); setResolveObservationId(""); }}
+          footer={<>
+              <button className="btn btn-secondary btn-small" onClick={() => { setResolveModal(null); setResolveObservationId(""); }}>Cancel</button>
+              <button className="btn btn-primary btn-small" disabled={resolveOutcome === "matched" && !resolveObservationId.trim()} onClick={handleResolve}>Record resolution</button>
+            </>}
         >
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>
-              Resolve Line #{resolveModal.lineIndex}
-            </h3>
             <div
               style={{
                 fontSize: "0.8125rem",
@@ -614,25 +586,7 @@ export default function BatchDetailPage() {
                 placeholder="Optional resolution note"
               />
             </div>
-            <div className="modal-actions">
-              <button
-                className="btn-small"
-                onClick={() => { setResolveModal(null); setResolveObservationId(""); }}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-primary btn-small"
-                disabled={
-                  resolveOutcome === "matched" && !resolveObservationId.trim()
-                }
-                onClick={handleResolve}
-              >
-                Resolve
-              </button>
-            </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

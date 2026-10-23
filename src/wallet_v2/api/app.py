@@ -30,6 +30,7 @@ from wallet_v2.api.routes import (
     enrichment,
     health,
     push_notifications,
+    reconciliation_runs,
 )
 from wallet_v2.config import Settings, load_settings
 from wallet_v2.persistence.session import (
@@ -78,6 +79,7 @@ def _create_app_from_settings(settings: Settings) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(batches.router)
+    app.include_router(reconciliation_runs.router)
     app.include_router(commands.router)
     app.include_router(enrichment.router)
     app.include_router(push_notifications.router)
@@ -135,6 +137,7 @@ def create_test_app(database_url: str = "sqlite:///:memory:") -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(batches.router)
+    app.include_router(reconciliation_runs.router)
     app.include_router(commands.router)
     app.include_router(enrichment.router)
     app.include_router(push_notifications.router)

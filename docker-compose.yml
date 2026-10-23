@@ -23,23 +23,14 @@ services:
     environment:
       WALLET_V2__DATABASE__URL: postgresql+psycopg://wallet_v2:wallet_v2@postgres:5432/wallet_v2
       WALLET_V2__ENVIRONMENT: dev
-      WALLET_V2__MAILBOX__MODE: ${WALLET_V2__MAILBOX__MODE:-disabled}
-      WALLET_V2__MAILBOX__PROVIDER: ${WALLET_V2__MAILBOX__PROVIDER:-}
-      WALLET_V2__MAILBOX__HOST: ${WALLET_V2__MAILBOX__HOST:-}
-      WALLET_V2__MAILBOX__PORT: ${WALLET_V2__MAILBOX__PORT:-}
-      WALLET_V2__MAILBOX__USERNAME: ${WALLET_V2__MAILBOX__USERNAME:-}
-      WALLET_V2__MAILBOX__PASSWORD: ${WALLET_V2__MAILBOX__PASSWORD:-}
+      # The config loader rejects present-but-empty fields. Local compose is a
+      # fail-closed reconciliation console: integrations stay disabled unless
+      # a deliberate environment override supplies a complete configuration.
+      WALLET_V2__MAILBOX__MODE: disabled
       WALLET_V2__MAILBOX__READONLY: "true"
-      WALLET_V2__LLM__MODE: ${WALLET_V2__LLM__MODE:-disabled}
-      WALLET_V2__LLM__PROVIDER: ${WALLET_V2__LLM__PROVIDER:-}
-      WALLET_V2__LLM__MODEL: ${WALLET_V2__LLM__MODEL:-}
-      WALLET_V2__LLM__API_KEY: ${WALLET_V2__LLM__API_KEY:-}
-      WALLET_V2__WALLET__MODE: ${WALLET_V2__WALLET__MODE:-disabled}
-      WALLET_V2__WALLET__BASE_URL: ${WALLET_V2__WALLET__BASE_URL:-}
-      WALLET_V2__WALLET__API_KEY: ${WALLET_V2__WALLET__API_KEY:-}
-      WALLET_V2__MCP__MODE: ${WALLET_V2__MCP__MODE:-disabled}
-      WALLET_V2__MCP__BASE_URL: ${WALLET_V2__MCP__BASE_URL:-}
-      WALLET_V2__MCP__API_KEY: ${WALLET_V2__MCP__API_KEY:-}
+      WALLET_V2__LLM__MODE: disabled
+      WALLET_V2__WALLET__MODE: disabled
+      WALLET_V2__MCP__MODE: disabled
     ports:
       - "8000:8000"
     depends_on:
@@ -60,3 +51,7 @@ services:
 
 volumes:
   wallet-v2-pgdata:
+    # Reuse the existing local development ledger instead of creating a new,
+    # branch-namespaced database volume when this UI worktree is started.
+    external: true
+    name: wallet-v2-wt-integrations_wallet-v2-pgdata

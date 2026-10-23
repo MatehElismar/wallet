@@ -16,6 +16,7 @@ dependencies = [
     "psycopg[binary]>=3.1.19,<4",
     "pypdf>=5.0.0,<6",
     "fastapi>=0.115.0,<1",
+    "starlette>=0.46.0,<1",
     "uvicorn[standard]>=0.30.0,<1",
 ]
 

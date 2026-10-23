@@ -2,8 +2,12 @@
 
 ## Goal
 
-Review-first email-to-Wallet transaction ingestion with operator-controlled reconciliation,
-MCP-backed advisory enrichment, and immutable audit trail.
+Historical ledger reconciliation across a user-selected date range: discover all
+available accounts, compare posted bank-statement activity with existing Wallet
+history, and propose evidence-backed missing, duplicate, mismatch, and
+ambiguous cases for operator review. Statement-backed, human-approved events
+are the only route to canonical records; email, LLM, and MCP output remain
+advisory evidence.
 
 ---
 
@@ -17,6 +21,7 @@ MCP-backed advisory enrichment, and immutable audit trail.
 - [x] Immutable-table invariant (no `updated_at` for append-only tables)
 - [x] Idempotency keys on processing attempts and import commands
 - [x] Fail-closed config system (`WALLET_V2__` prefix, all integrations default disabled)
+- [x] Bank-agnostic reference normalization (`ReferenceNormalizer` protocol + registry)
 - [x] Hermetic test suite (no network or database required)
 
 ### Adapters (Live Connectors)
@@ -69,8 +74,8 @@ MCP-backed advisory enrichment, and immutable audit trail.
 - [x] `deploy.sh` — Docker Compose build + health checks (API :8000, Web :3000)
 - [x] `docs/architecture.md` — invariants, schema reference, non-goals
 - [x] `docs/deployment.md` — Cloud Run + Firebase App Hosting setup
-- [ ] Authentication (explicitly deferred — single-operator, unauthenticated audit initiator)
-- [ ] Background reconciliation job (service layer exists, no worker)
+- [ ] Authentication and identity-backed audit attribution (not yet implemented; P0 for the pilot)
+- [ ] Background reconciliation job for `unknown` Wallet outcomes (not yet implemented; P1 for the pilot)
 
 ### CLI
 - [x] `wallet-v2 run` — fetch and create review tasks (dry_run/live, limit, date, uid, reprocess)
@@ -80,17 +85,24 @@ MCP-backed advisory enrichment, and immutable audit trail.
 
 ---
 
-## What Remains
+## What Remains — Historical Reconciliation Pilot
 
-| # | Task | Priority | Effort |
-|---|------|----------|--------|
-| 1 | Production push provider (FCM/VAPID delivery) | High | 4–8h |
-| 2 | Authentication (operator identity + audit attribution) | High | 8–16h |
-| 3 | Background reconciliation worker (resolve `unknown` import states) | Medium | 16–24h |
-| 4 | Catalog sync scheduling (periodic or webhook-driven) | Medium | 4–8h |
-| 5 | Advanced filtering/search across batches/candidates | Low | 8–12h |
-| 6 | Analytics/metrics dashboard | Low | 12–16h |
-| 7 | Native mobile app (beyond PWA) | Low | 40–60h |
+| # | Task | Priority | Notes |
+|---|------|----------|-------|
+| 1 | Repair the controlled ledger write path | P0 | One preview/submission payload, correct signed direction, finalized-decision and posted-event gates |
+| 2 | Statement balance proof | P0 | Persist `proven`, `unprovable`, or `failed`; ordinary approval requires `proven`, `unprovable` needs an audited override, and `failed` is blocked |
+| 3 | Human-validated account mappings | P0 | Fuzzy discovery proposes only; an explicit reviewed mapping authorizes the account |
+| 4 | Authentication and attributable audit identity | P0 | Reviewer and initiator must derive from a verified session, not request text |
+| 5 | Date-range reconciliation run | P0 | Discover all accounts, read Wallet history, and classify every statement line |
+| 6 | Read-only Wallet-history matching | P0 | Deterministic matching for matched, missing, duplicate, mismatch, ambiguous, and mapping-review outcomes |
+| 7 | Runs and review UI | P1 | Coverage dashboard, evidence dossier, canonical-candidate review, and two-step approval |
+| 8 | Accounts and activity UI | P1 | Mapping review, account drill-down, audit/import status, and visible `unknown` queue |
+| 9 | Background resolver for `unknown` Wallet outcomes | P1 | Out-of-band reconciliation; never blind retry |
+| 10 | Operational controls | P2 | Catalog scheduling, structured logs, metrics, retention, readiness checks |
+| 11 | Push notifications | P2 | Material run/review exceptions only; not a primary workflow |
+
+The detailed pilot definition and acceptance criteria live in
+[`docs/product-vision.md`](docs/product-vision.md).
 
 ---
 

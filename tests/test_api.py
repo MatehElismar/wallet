@@ -126,6 +126,68 @@ class TestListBatches:
         assert batch["statement_currency"] == "USD"
 
 
+class TestListReconciliationRuns:
+    def test_empty(self, client: TestClient) -> None:
+        response = client.get("/reconciliation-runs")
+
+        assert response.status_code == 200
+        assert response.json() == {"runs": []}
+
+    def test_operator_can_materialize_a_statement_evidence_snapshot(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/reconciliation-runs",
+            json={"period_start": "2026-01-01", "period_end": "2026-01-31"},
+        )
+
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["period_start"] == "2026-01-01"
+        assert payload["period_end"] == "2026-01-31"
+        assert payload["state"] == "materialized"
+        assert payload["evidence_scope"] == "statement_evidence_only"
+        assert payload["statement_account_count"] == 0
+        assert payload["included_statement_line_count"] == 0
+        assert payload["undated_excluded_line_count"] == 0
+        assert payload["created_at"]
+        listed = client.get("/reconciliation-runs").json()["runs"]
+        assert [item["run_id"] for item in listed] == [payload["run_id"]]
+
+    def test_detail_returns_a_persisted_snapshot(self, client: TestClient) -> None:
+        from datetime import date
+
+        from wallet_v2.application.reconciliation_runs import (
+            materialize_reconciliation_run,
+        )
+
+        factory = client.app.state.session_factory
+        with factory() as session:
+            run = materialize_reconciliation_run(
+                session,
+                period_start=date(2026, 1, 1),
+                period_end=date(2026, 1, 31),
+            )
+            session.commit()
+            run_id = run.id
+
+        response = client.get(f"/reconciliation-runs/{run_id}")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "run_id": str(run_id),
+            "period_start": "2026-01-01",
+            "period_end": "2026-01-31",
+            "state": "materialized",
+            "evidence_scope": "statement_evidence_only",
+            "statement_account_count": 0,
+            "included_statement_line_count": 0,
+            "undated_excluded_line_count": 0,
+            "created_at": response.json()["created_at"],
+            "account_coverages": [],
+        }
+
+
 class TestBatchDetail:
     def test_not_found(self, client: TestClient) -> None:
         response = client.get("/batches/00000000-0000-0000-0000-000000000000")
@@ -631,7 +693,7 @@ class TestApproveBatch:
             "/commands/approve-batch/00000000-0000-0000-0000-000000000000",
             json={"reviewer_id": "test-user"},
         )
-        assert response.status_code == 404
+        assert response.status_code == 503
 
     def test_ambiguous_blocks_approval(self, client: TestClient) -> None:
         factory = client.app.state.session_factory
@@ -701,8 +763,7 @@ class TestApproveBatch:
             f"/commands/approve-batch/{batch_id}",
             json={"reviewer_id": "test-user"},
         )
-        assert response.status_code == 422
-        assert "ambiguous" in response.json()["detail"].lower()
+        assert response.status_code == 503
 
     def test_approve_success(self, client: TestClient) -> None:
         factory = client.app.state.session_factory
@@ -766,12 +827,7 @@ class TestApproveBatch:
             f"/commands/approve-batch/{batch_id}",
             json={"reviewer_id": "operator", "note": "All good"},
         )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["event_count"] == 1
-        assert len(data["events"]) == 1
-        assert data["events"][0]["currency"] == "USD"
-        assert data["events"][0]["amount_minor"] == 1000
+        assert response.status_code == 503
 
 
 class TestDryRunImport:
@@ -779,7 +835,7 @@ class TestDryRunImport:
         response = client.post(
             "/commands/dry-run-import/00000000-0000-0000-0000-000000000000",
         )
-        assert response.status_code == 404
+        assert response.status_code == 503
 
     def test_dry_run_success(self, client: TestClient) -> None:
         factory = client.app.state.session_factory
@@ -863,11 +919,7 @@ class TestDryRunImport:
             event_id = str(events[0].id)
 
         response = client.post(f"/commands/dry-run-import/{event_id}")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["event_id"] == event_id
-        assert "command_id" in data
-        assert data["status"] == "queued"
+        assert response.status_code == 503
 
 
 class TestBatchDetailEligibleObservations:
@@ -984,13 +1036,27 @@ class TestProxyHeaderSafety:
         response = client.get("/batches", headers={})
         assert response.status_code == 200
 
-    def test_command_routes_no_auth_required(self, client: TestClient) -> None:
+    def test_financial_mutation_commands_are_unavailable_without_authenticated_identity(
+        self, client: TestClient
+    ) -> None:
         response = client.post(
             "/commands/approve-batch/00000000-0000-0000-0000-000000000000",
-            json={"reviewer_id": "anon"},
+            json={"reviewer_id": "forged"},
             headers={},
         )
-        assert response.status_code == 404
+        assert response.status_code == 503
+        assert response.json()["detail"] == (
+            "Canonical approval is unavailable until authenticated operator identity is enforced."
+        )
+
+        import_response = client.post(
+            "/commands/dry-run-import/00000000-0000-0000-0000-000000000000",
+            headers={},
+        )
+        assert import_response.status_code == 503
+        assert import_response.json()["detail"] == (
+            "Wallet import is unavailable until authenticated operator identity is enforced."
+        )
 
 
 class TestNoProductionSqlite:
@@ -1166,33 +1232,13 @@ class TestCommandRunCompletion:
             f"/commands/approve-batch/{batch_id}",
             json={"reviewer_id": "test-user"},
         )
-        assert response.status_code == 422
-        assert "ambiguous" in response.json()["detail"].lower()
+        assert response.status_code == 503
 
         with factory() as session:
-            runs = session.scalars(
-                select(ExecutionRun)
-                .where(ExecutionRun.label == "operator-console")
-                .where(ExecutionRun.outcome == "failed")
-                .order_by(ExecutionRun.started_at.desc())
+            command_runs = session.scalars(
+                select(ExecutionRun).where(ExecutionRun.label == "operator-console")
             ).all()
-            assert len(runs) == 1
-            failed_run = runs[0]
-            assert failed_run.finished_at is not None
-            assert failed_run.error_summary is not None
-            assert "ambiguous" in failed_run.error_summary.lower()
-
-            audit = session.scalars(
-                select(AuditEvent)
-                .where(AuditEvent.execution_run_id == failed_run.id)
-                .where(AuditEvent.event_kind == AuditEventKind.EXECUTION_RUN_FINISHED)
-            ).first()
-            assert audit is not None
-            assert audit.payload == {"outcome": "failed"}
-
-            saved_batch = session.get(StatementReviewBatch, batch.id)
-            assert saved_batch is not None
-            assert saved_batch.state == "open"
+            assert command_runs == []
 
     def test_map_account_finishes_run(self, client: TestClient) -> None:
         factory = client.app.state.session_factory
@@ -1344,12 +1390,10 @@ class TestDryRunEventId:
             assert event_id != str(line.id), "event ID must differ from line ID"
 
         response = client.post(f"/commands/dry-run-import/{event_id}")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["event_id"] == event_id
+        assert response.status_code == 503
 
     def test_dry_run_import_nonexistent_event_returns_404(self, client: TestClient) -> None:
         response = client.post(
             "/commands/dry-run-import/00000000-0000-0000-0000-000000000000",
         )
-        assert response.status_code == 404
+        assert response.status_code == 503

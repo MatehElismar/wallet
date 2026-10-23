@@ -16,12 +16,14 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    DDL,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
     UniqueConstraint,
+    event,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -70,6 +72,160 @@ class FinancialAccount(Base, Timestamped):
         back_populates="financial_account",
         cascade="save-update, merge",
         order_by="AccountMapping.created_at.desc()",
+    )
+    reconciliation_run_coverages: Mapped[
+        list["ReconciliationRunAccountCoverage"]
+    ] = relationship(back_populates="financial_account")
+
+
+class ReconciliationRun(Base, Immutable):
+    """An immutable-at-materialization snapshot of statement evidence in a date range.
+
+    This is deliberately not a Wallet-history reconciliation result. The first
+    pilot slice records only the statement evidence currently available and its
+    notification-evidence resolution state.
+    """
+
+    __tablename__ = "reconciliation_runs"
+    __table_args__ = (
+        CheckConstraint("period_start <= period_end", name="ck_reconciliation_runs_range"),
+        CheckConstraint(
+            "state IN ('materialized')", name="ck_reconciliation_runs_state"
+        ),
+        CheckConstraint(
+            "statement_account_count >= 0", name="ck_reconciliation_runs_account_count"
+        ),
+        CheckConstraint(
+            "included_statement_line_count >= 0",
+            name="ck_reconciliation_runs_included_line_count",
+        ),
+        CheckConstraint(
+            "undated_excluded_line_count >= 0",
+            name="ck_reconciliation_runs_undated_line_count",
+        ),
+        Index("ix_reconciliation_runs_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False, default="materialized")
+    statement_account_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    included_statement_line_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    undated_excluded_line_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+
+    account_coverages: Mapped[list["ReconciliationRunAccountCoverage"]] = relationship(
+        back_populates="reconciliation_run",
+        cascade="save-update, merge",
+        order_by="ReconciliationRunAccountCoverage.issuer_snapshot, ReconciliationRunAccountCoverage.external_reference_snapshot",
+    )
+
+
+@event.listens_for(ReconciliationRun, "before_update")
+def _reject_reconciliation_run_update(
+    _mapper: object, _connection: object, _target: ReconciliationRun
+) -> None:
+    raise ValueError("materialized reconciliation runs are immutable")
+
+
+class ReconciliationRunAccountCoverage(Base, Immutable):
+    """Per-account statement-evidence counts frozen into a reconciliation run."""
+
+    __tablename__ = "reconciliation_run_account_coverages"
+    __table_args__ = (
+        UniqueConstraint(
+            "reconciliation_run_id",
+            "financial_account_id",
+            name="uq_reconciliation_run_account_coverage",
+        ),
+        CheckConstraint(
+            "statement_count >= 0", name="ck_reconciliation_run_coverage_statement_count"
+        ),
+        CheckConstraint(
+            "included_line_count >= 0", name="ck_reconciliation_run_coverage_included"
+        ),
+        CheckConstraint(
+            "undated_excluded_line_count >= 0",
+            name="ck_reconciliation_run_coverage_undated",
+        ),
+        CheckConstraint(
+            "unresolved_line_count >= 0", name="ck_reconciliation_run_coverage_unresolved"
+        ),
+        CheckConstraint("new_count >= 0", name="ck_reconciliation_run_coverage_new"),
+        CheckConstraint("matched_count >= 0", name="ck_reconciliation_run_coverage_matched"),
+        CheckConstraint("ambiguous_count >= 0", name="ck_reconciliation_run_coverage_ambiguous"),
+        CheckConstraint("ignored_count >= 0", name="ck_reconciliation_run_coverage_ignored"),
+        CheckConstraint(
+            "included_line_count = unresolved_line_count + new_count + matched_count + ambiguous_count + ignored_count",
+            name="ck_reconciliation_run_coverage_count_equation",
+        ),
+        Index(
+            "ix_reconciliation_run_account_coverages_run",
+            "reconciliation_run_id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    reconciliation_run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("reconciliation_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+    financial_account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("financial_accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    issuer_snapshot: Mapped[str] = mapped_column(String(128), nullable=False)
+    external_reference_snapshot: Mapped[str] = mapped_column(String(255), nullable=False)
+    statement_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    included_line_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    undated_excluded_line_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    unresolved_line_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    new_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    matched_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ambiguous_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ignored_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    reconciliation_run: Mapped["ReconciliationRun"] = relationship(
+        back_populates="account_coverages"
+    )
+    financial_account: Mapped["FinancialAccount"] = relationship(
+        back_populates="reconciliation_run_coverages"
+    )
+
+
+@event.listens_for(ReconciliationRunAccountCoverage, "before_update")
+def _reject_reconciliation_run_coverage_update(
+    _mapper: object, _connection: object, _target: ReconciliationRunAccountCoverage
+) -> None:
+    raise ValueError("materialized reconciliation run coverage is immutable")
+
+
+# SQLite backs the hermetic ORM suite, so it receives the same database-level
+# update/delete fence that the PostgreSQL migration installs in production.
+for _table, _noun in (
+    (ReconciliationRun.__table__, "materialized reconciliation runs"),
+    (ReconciliationRunAccountCoverage.__table__, "materialized reconciliation run coverage"),
+):
+    _trigger_prefix = f"trg_{_table.name}_immutable"
+    event.listen(
+        _table,
+        "after_create",
+        DDL(
+            f"CREATE TRIGGER {_trigger_prefix}_update BEFORE UPDATE ON {_table.name} "
+            f"BEGIN SELECT RAISE(ABORT, '{_noun} are immutable'); END"
+        ).execute_if(dialect="sqlite"),
+    )
+    event.listen(
+        _table,
+        "after_create",
+        DDL(
+            f"CREATE TRIGGER {_trigger_prefix}_delete BEFORE DELETE ON {_table.name} "
+            f"BEGIN SELECT RAISE(ABORT, '{_noun} are immutable'); END"
+        ).execute_if(dialect="sqlite"),
     )
 
 

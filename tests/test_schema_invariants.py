@@ -1080,6 +1080,8 @@ class TestMetadataCompleteness:
             "notification_outbox",
             "catalog_sync_cursors",
             "catalog_sync_snapshots",
+            "reconciliation_runs",
+            "reconciliation_run_account_coverages",
         }
         missing = expected - table_names
         extra = table_names - expected

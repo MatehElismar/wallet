@@ -49,16 +49,15 @@ def score_account_match(
     ref_clean = external_reference.casefold()
 
     ref_digits = re.findall(r"\d{3,4}", ref_clean)
+    ref_words = [w for w in re.split(r"\W+", ref_clean) if len(w) >= 2]
     score = 0.0
     if ref_digits:
         for d in ref_digits:
             if d in item_clean:
                 score += 0.5
                 break
-    else:
-        ref_words = [w for w in re.split(r"\W+", ref_clean) if len(w) >= 2]
-        if ref_words and any(w in item_clean for w in ref_words):
-            score += 0.4
+    elif ref_words and any(w in item_clean for w in ref_words):
+        score += 0.4
 
     issuer_words = [w for w in re.split(r"\W+", issuer_clean) if len(w) >= 2]
     issuer_words = [w for w in issuer_words if w not in {"banco", "bank"}]
@@ -71,12 +70,14 @@ def score_account_match(
     # the issuer or reference.  Breaks ties between otherwise identical matches
     # (e.g.  "CC BHD 1281" vs "CC BHD 1281 USD") without disturbing
     # meaningful ranking gaps.
-    known_words = set(issuer_words) | set(ref_digits) | {issuer_clean, ref_clean}
+    known_words = (
+        set(issuer_words) | set(ref_digits) | set(ref_words) | {issuer_clean, ref_clean}
+    )
     item_tokens = [t for t in re.split(r"\W+", item_clean) if len(t) >= 2]
     extra = sum(1 for t in item_tokens if t not in known_words)
     score -= extra * 0.05
 
-    return min(score, 1.0)
+    return max(0.0, min(score, 1.0))
 
 
 def find_catalog_account_matches(

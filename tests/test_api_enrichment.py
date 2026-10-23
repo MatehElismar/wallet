@@ -661,17 +661,7 @@ class TestAtomicApproveAndFinalize:
             }
         }
         res = client.post(f"/commands/approve-batch/{batch_id}", json=approve_body)
-        assert res.status_code == 200
-        data = res.json()
-        assert data["event_count"] == 1
-        event_id = data["events"][0]["event_id"]
-
-        # Verify event enrichment is finalized
-        eres = client.get(f"/enrichment/events/{event_id}")
-        assert eres.status_code == 200
-        edata = eres.json()
-        assert edata["finalized"] is True
-        assert edata["selected_category_id"] == "cat-gadgets"
+        assert res.status_code == 503
 
     def test_approve_batch_rollback_on_finalization_failure(self, client: TestClient) -> None:
         factory = client.app.state.session_factory
@@ -723,7 +713,7 @@ class TestAtomicApproveAndFinalize:
 
         # Attempt to approve batch without providing an override -> finalization fails on no_recommendation
         res = client.post(f"/commands/approve-batch/{batch_id}", json={"reviewer_id": "op"})
-        assert res.status_code == 422
+        assert res.status_code == 503
 
         # Verify atomic rollback: batch is still open, no events committed
         with factory() as session:

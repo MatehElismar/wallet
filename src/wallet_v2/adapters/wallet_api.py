@@ -415,19 +415,22 @@ class BudgetBakersWalletClient:
                     batch_result=batch_result,
                 )
         except HTTPError as exc:
-            error_body = exc.read().decode("utf-8", errors="replace")[:2048]
-            error_data: dict[str, object] | None = None
             try:
-                error_data = json.loads(error_body) if error_body else None
-            except json.JSONDecodeError:
-                pass
-            return WalletSubmissionResult(
-                status=WalletAttemptStatus.FAILED,
-                request=payload,
-                response=error_data,
-                error_kind=f"http_{exc.code}",
-                error_message=error_body,
-            )
+                error_body = exc.read().decode("utf-8", errors="replace")[:2048]
+                error_data: dict[str, object] | None = None
+                try:
+                    error_data = json.loads(error_body) if error_body else None
+                except json.JSONDecodeError:
+                    pass
+                return WalletSubmissionResult(
+                    status=WalletAttemptStatus.FAILED,
+                    request=payload,
+                    response=error_data,
+                    error_kind=f"http_{exc.code}",
+                    error_message=error_body,
+                )
+            finally:
+                exc.close()
         except TimeoutError:
             return WalletSubmissionResult(
                 status=WalletAttemptStatus.UNKNOWN,

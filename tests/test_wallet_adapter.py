@@ -68,6 +68,7 @@ def test_wallet_http_error_is_failed() -> None:
 
     assert result.status is WalletAttemptStatus.FAILED
     assert result.error_kind == "http_400"
+    assert http_error.closed
 
 
 # ── batch create result parsing (static, no network) ──────────────────

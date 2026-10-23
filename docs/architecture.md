@@ -1,24 +1,32 @@
 # Wallet V2 — Architecture
 
-This document describes the safe V2 foundation: the workflow stages, the
-domain primitives, the persistence schema, and the operational invariants
-that hold across them. It is the canonical reference for the code in
-`src/wallet_v2/` and the migration in `alembic/versions/0001_initial.py`.
+This document describes the Wallet V2 architecture: the workflow stages,
+domain primitives, persistence schema, controlled integrations, and operational
+invariants. It is the canonical reference for the code in `src/wallet_v2/`.
 
-## Scope of this milestone
+## Scope and operating boundary
 
-The foundation delivers scaffolding only. There are **no live
-connectors** in this codebase:
+Wallet V2's product direction is historical ledger reconciliation: an operator
+chooses a date range, the system discovers available accounts and evidence,
+compares posted statement lines with existing Wallet history, and proposes
+missing, duplicate, mismatch, or ambiguous cases for human review. See
+[`product-vision.md`](product-vision.md) for the pilot definition.
 
-- No IMAP / Gmail client.
-- No LLM client.
-- No Wallet API client.
-- No credentials, no mock fallbacks, no network calls.
+The currently implemented foundation includes a read-only IMAP mailbox adapter,
+an OpenAI-compatible extraction adapter, a BudgetBakers Wallet API adapter, and
+an MCP-backed advisory-enrichment adapter. It also includes a FastAPI operator
+API, a Next.js PWA, a catalog-sync service, and an idempotent notification
+outbox.
 
-Every external adapter is dependency-injected by the (future) application
-layer. The foundation's job is to define the durable shape those adapters
-will populate: domain primitives, a PostgreSQL-first schema, and the
-invariants that keep the financial path safe.
+External integrations are disabled by default and credentials are never
+committed or logged. `dry_run` may read the configured mailbox and LLM but
+records Wallet import intent locally without making a Wallet API request.
+Mailbox access always uses read-only IMAP selection and `BODY.PEEK[]`.
+
+The application does not support unattended imports. Statement-derived
+financial events require review approval before an import command can be
+created. Notification candidates remain advisory-only and cannot directly
+create a Wallet import command.
 
 ## Workflow
 
@@ -140,7 +148,7 @@ Twelve tables, grouped by workflow stage:
 | `financial_events` | canonical posted event | **no** | created only by an approved statement batch; reversals can link their original event |
 | `review_tasks` | review | yes | 1:1 with candidate |
 | `review_decisions` | decision | **no** | append-only, no `updated_at` |
-| `import_commands` | import | yes | exactly one origin: candidate legacy record or canonical financial event |
+| `import_commands` | import | yes | pilot write origin must be an approved canonical financial event; legacy candidate-origin support is not an allowed product path and must be retired before live pilot use |
 | `wallet_attempts` | wallet submit | **no** | unique `(import_command_id, attempt_index)` |
 | `wallet_receipts` | receipt | yes | 1:1 with `import_commands`, nullable until confirmed |
 | `audit_events` | audit | **no** | append-only, soft FK |
@@ -211,7 +219,7 @@ WALLET_V2__DATABASE__URL=postgresql+psycopg://wallet_v2:wallet_v2@localhost:5432
 
 ## Tests
 
-`tests/` — hermetic; no network, no database required. The test suite
+`tests/` — hermetic; no network or external database required. The test suite
 exercises:
 
 - `Money` construction, addition, comparison, currency mismatch,
@@ -224,6 +232,8 @@ exercises:
   unique triple).
 - Attempt and import-command idempotency constraints (unique keys).
 - Import-command `unknown` state is representable and reachable.
+- Controlled IMAP, LLM, MCP, Wallet API, catalog-sync, push-outbox, API, and
+  operator-enrichment behavior through local fakes and mocked transports.
 
 Run with:
 
@@ -231,10 +241,28 @@ Run with:
 uv run pytest
 ```
 
-## Non-goals (this milestone)
+## Current non-goals
 
 - No migration of legacy data or credentials.
-- No live IMAP, Gmail, LLM, or Wallet API calls.
-- No automatic import functionality.
-- No reconciliation job implementation (schema and states are in place;
-  the job is a near-term follow-up).
+- No unattended or notification-candidate direct import functionality.
+- No production push-provider delivery (the provider remains disabled/stubbed).
+- Operator authentication and identity-backed audit attribution are not yet
+  implemented; they are P0 prerequisites for the historical-reconciliation
+  pilot, not enduring product non-goals.
+- A background reconciliation worker for resolving `unknown` import states is
+  not yet implemented; it is a P1 pilot operational requirement, never a
+  reason to blind-retry.
+
+## Pilot target model (not yet implemented)
+
+The historical-reconciliation pilot adds a durable date-range reconciliation
+run and a read-only Wallet-history baseline. A run records its source coverage,
+discovered accounts, matching rationale, and one outcome for every ingested
+posted statement line. It emits canonical proposals only for statement-backed
+`missing in Wallet` outcomes.
+
+The existing `statement_review_batches` and `financial_events` model describes
+the current all-at-once per-statement approval implementation. The pilot needs
+durable per-proposal approve/reject/defer decisions (which may be confirmed in
+one review session) before a canonical event is created. This is target
+architecture, not a claim about the current schema.

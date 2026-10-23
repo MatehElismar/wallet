@@ -16,6 +16,37 @@ export interface BatchSummary {
   created_at: string;
 }
 
+export interface ReconciliationRunSummary {
+  run_id: string;
+  period_start: string;
+  period_end: string;
+  state: string;
+  evidence_scope: "statement_evidence_only";
+  statement_account_count: number;
+  included_statement_line_count: number;
+  undated_excluded_line_count: number;
+  created_at: string;
+}
+
+export interface ReconciliationRunAccountCoverage {
+  financial_account_id: string;
+  issuer: string;
+  external_reference: string;
+  statement_count: number;
+  included_line_count: number;
+  undated_excluded_line_count: number;
+  unresolved_line_count: number;
+  new_count: number;
+  new_count_definition: "unmatched_notification_evidence";
+  matched_count: number;
+  ambiguous_count: number;
+  ignored_count: number;
+}
+
+export interface ReconciliationRunDetail extends ReconciliationRunSummary {
+  account_coverages: ReconciliationRunAccountCoverage[];
+}
+
 export interface BatchDetail {
   batch_id: string;
   statement_id: string;
@@ -105,6 +136,27 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function listBatches(): Promise<{ batches: BatchSummary[] }> {
   return fetchJSON("/batches");
+}
+
+export async function listReconciliationRuns(): Promise<{
+  runs: ReconciliationRunSummary[];
+}> {
+  return fetchJSON("/reconciliation-runs");
+}
+
+export async function createReconciliationRun(
+  body: { period_start: string; period_end: string },
+): Promise<ReconciliationRunSummary> {
+  return fetchJSON("/reconciliation-runs", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getReconciliationRun(
+  runId: string,
+): Promise<ReconciliationRunDetail> {
+  return fetchJSON(`/reconciliation-runs/${runId}`);
 }
 
 export async function getBatchDetail(
