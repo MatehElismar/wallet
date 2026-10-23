@@ -10,8 +10,10 @@ email extraction, and LLM/MCP output are advisory evidence only. All
 integrations default to disabled; credentials are never committed or logged.
 
 See [`docs/product-vision.md`](docs/product-vision.md) for the pilot product
-scope and safety model. The codebase described below contains the foundation
-and controlled integrations that support that direction.
+scope and safety model, and [`docs/PROJECT_HANDOFF.md`](docs/PROJECT_HANDOFF.md)
+for the current implementation checkpoint, branch/PR context, verification
+commands, local runtime notes, and remaining work. The codebase described below
+contains the foundation and controlled integrations that support that direction.
 
 ## Requirements
 
